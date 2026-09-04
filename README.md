@@ -6,6 +6,22 @@ Point a camera at your hand, hold a pose, and the TV responds. Phase 1 runs on a
 laptop webcam and controls a Roku over its local HTTP API. Nothing leaves your
 network; there is no cloud service in the loop.
 
+## Status
+
+Phase 1 works end to end. Verified against an Insignia Roku TV (Roku OS 15.3.4)
+from a MacBook Pro, Python 3.14, MediaPipe 0.10.35:
+
+| | |
+|---|---|
+| TV control | working — wake, volume, mute, play/pause, power on and off |
+| Gesture detection | working — seven poses, wake gate, per-gesture hold times |
+| Tests | 47, all headless: no camera, no TV, no MediaPipe |
+| Browser, mobile, other devices | not started |
+
+The open question is **range**: how reliably a laptop webcam detects a hand from
+where you actually sit. Step 4 below measures it, and the answer decides whether
+this needs an external camera. Everything else about phase 1 is settled.
+
 ## Start here
 
 Three checks before writing or running anything else. Each one can invalidate
@@ -79,8 +95,9 @@ python3 -m gesturectl.main --dry-run   # detect and log, send nothing
 python3 -m gesturectl.main             # for real
 ```
 
-Hold an **open palm** for about a second to wake it. A **fist** puts it back to
-sleep, and so does ten seconds with no hand in frame.
+Hold **Victory** for about a second to wake it. Drop your hand, show Victory
+again to put it back to sleep — and ten seconds with no hand in frame does the
+same thing, so your arm gets a rest.
 
 | Pose | Does |
 |---|---|
