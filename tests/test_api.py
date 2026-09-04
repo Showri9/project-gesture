@@ -239,3 +239,24 @@ def test_rebinding_a_pose_takes_effect(client):
         poses(ws, "Pointing_Up", 10, start=t)
         client.get("/api/health")
     assert Intent.MUTE_TOGGLE in adapter(client).sent
+
+
+# -- the app serves the phone page ------------------------------------------
+
+def test_frontend_is_served_at_the_root(client):
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "gesturectl" in page.text
+    assert "/src/app.js" in page.text
+
+
+def test_frontend_modules_are_reachable(client):
+    for path in ("/styles.css", "/src/app.js", "/src/api/client.js",
+                 "/src/vision/detector.js"):
+        assert client.get(path).status_code == 200, path
+
+
+def test_the_static_mount_does_not_swallow_the_api(client):
+    """The frontend is mounted at "/", so this is the regression that would
+    quietly break every endpoint at once."""
+    assert client.get("/api/health").json()["ok"] is True

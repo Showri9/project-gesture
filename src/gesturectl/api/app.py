@@ -19,6 +19,7 @@ from .routes import router
 log = logging.getLogger("gesturectl")
 
 FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
+MODELS = Path(__file__).resolve().parents[3] / "models"
 
 
 def create_app(
@@ -50,6 +51,11 @@ def create_app(
         allow_headers=["*"], allow_credentials=False,
     )
     app.include_router(router)
+
+    # The phone fetches the recogniser bundle from here rather than a CDN, so
+    # the whole thing keeps working with no internet at all.
+    if MODELS.is_dir():
+        app.mount("/models", StaticFiles(directory=MODELS), name="models")
 
     if FRONTEND.is_dir():
         app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
