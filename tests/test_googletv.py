@@ -213,3 +213,19 @@ def test_service_lookup_cannot_outlast_the_browse_window():
     assert discover._INFO_TIMEOUT_MS / 1000.0 <= window / 2, (
         "a single lookup must not be able to eat more than half the sweep"
     )
+
+
+def test_the_roku_sweep_re_announces_rather_than_sending_once():
+    """SSDP drops packets routinely. A single M-SEARCH meant the Roku vanished
+    from a scan at random - which is how a scan came back with only the Google
+    TV on a network with both."""
+    import inspect
+
+    from gesturectl.devices import discover
+
+    source = inspect.getsource(discover._ssdp_sweep)
+    assert "next_send" in source, "the query must be repeated across the window"
+    assert "ssdp:all" in inspect.getsource(discover.discover_roku), (
+        "a targeted search finding nothing must fall back to a broad one"
+    )
+    assert "log.info" in source, "a failed socket must not look like an empty network"

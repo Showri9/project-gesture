@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import socket
 import time
+
+log = logging.getLogger("gesturectl.discover")
 
 _SSDP_ADDR = ("239.255.255.250", 1900)
 _ROKU_MSEARCH = (
@@ -19,35 +22,73 @@ _ROKU_MSEARCH = (
 _LOCATION = re.compile(rb"^LOCATION:\s*(\S+)", re.IGNORECASE | re.MULTILINE)
 
 
-def discover_roku(timeout: float = 4.0) -> list[str]:
+def _ssdp_msearch(st: str) -> bytes:
+    return (
+        "M-SEARCH * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        'MAN: "ssdp:discover"\r\n'
+        f"ST: {st}\r\n"
+        "MX: 2\r\n\r\n"
+    ).encode()
+
+
+def discover_roku(timeout: float = 5.0) -> list[str]:
     """Return base URLs like http://192.168.1.20:8060 for every Roku that answers.
 
-    Blocking on purpose - it runs once at startup, and UDP multicast in asyncio is
-    more ceremony than this deserves. Note this needs the machine to be on the
-    same subnet as the TV, and some routers block multicast between wifi bands.
+    SSDP is UDP multicast, which is lossy: a single M-SEARCH gets dropped
+    routinely, most often between a router's 2.4GHz and 5GHz bands. So the
+    query is re-announced across the listen window rather than sent once, and a
+    targeted search that finds nothing falls back to a broad one filtered on
+    port 8060, for devices that ignore the targeted form.
+
+    Blocking on purpose - multicast in asyncio is more ceremony than this
+    deserves, and the caller runs it in a thread.
     """
+    for st in ("roku:ecp", "ssdp:all"):
+        found = _ssdp_sweep(st, timeout)
+        if found:
+            return found
+    return []
+
+
+def _ssdp_sweep(st: str, timeout: float) -> list[str]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-    sock.settimeout(0.5)
+    sock.settimeout(0.4)
 
+    packet = _ssdp_msearch(st)
     found: list[str] = []
     deadline = time.monotonic() + timeout
+    next_send = 0.0
     try:
-        sock.sendto(_ROKU_MSEARCH, _SSDP_ADDR)
         while time.monotonic() < deadline:
+            now = time.monotonic()
+            if now >= next_send:
+                try:
+                    sock.sendto(packet, _SSDP_ADDR)
+                except OSError as exc:
+                    # Worth saying out loud. Swallowing this made a broken
+                    # socket look exactly like an empty network.
+                    log.info("SSDP send failed (%s): %s", st, exc)
+                next_send = now + 1.2
             try:
                 data, _addr = sock.recvfrom(2048)
             except (socket.timeout, TimeoutError):
                 continue
+            except OSError as exc:
+                log.info("SSDP receive failed (%s): %s", st, exc)
+                break
             match = _LOCATION.search(data)
             if not match:
                 continue
             url = match.group(1).decode().rstrip("/")
-            if url not in found:
-                found.append(url)
-    except OSError:
-        pass
+            if ":8060" not in url:        # ssdp:all returns every device on the LAN
+                continue
+            parts = url.split("/", 3)
+            base = "/".join(parts[:3]) if len(parts) >= 3 else url
+            if base not in found:
+                found.append(base)
     finally:
         sock.close()
     return found
