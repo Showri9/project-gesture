@@ -106,10 +106,17 @@ def explain_failure(status, note: str) -> None:
     if status in (401, 403):
         print(f"  REFUSED (HTTP {status})")
         print()
-        print("  The TV answered, it just won't accept keypresses. Enable:")
-        print("  Settings > System > Advanced system settings >")
-        print("  Control by mobile apps > Network access  ->  Default or Permissive")
-        print("  (Roku OS 14.1+ requires this; older firmware didn't.)")
+        print("  The TV answered, it just won't accept keypresses.")
+        print("  On the TV, with the physical remote:")
+        print()
+        print("    Settings > System > Advanced system settings >")
+        print("    Control by mobile apps > Network access")
+        print()
+        print("  Yours is set to Disabled. Set it to Default.")
+        print("  Default  - accepts control from the same subnet (what you want)")
+        print("  Permissive - also accepts it from other subnets; only needed if")
+        print("               your laptop and TV sit on different networks")
+        print("  Roku OS 14.1+ enforces this; older firmware ignored it.")
         return
     print(f"  Unexpected HTTP {status}")
 
