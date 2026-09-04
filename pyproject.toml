@@ -20,16 +20,20 @@ dependencies = [
     "httpx>=0.27",
     "pyyaml>=6.0",
     "fastapi>=0.115",
-    "uvicorn>=0.30",
+    # [standard] is not optional in practice: bare uvicorn has no WebSocket
+    # implementation, and the pose stream then 404s with only a warning
+    # buried in the startup log to explain why.
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]
 firetv = ["adb-shell>=0.4.4"]
-googletv = ["androidtvremote2>=0.1.1"]
+googletv = ["androidtvremote2>=0.2", "zeroconf>=0.130"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
 gesturectl = "gesturectl.main:main"
+gesturectl-server = "gesturectl.server:main"
 
 [build-system]
 requires = ["setuptools>=68"]

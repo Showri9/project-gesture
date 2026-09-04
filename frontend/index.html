@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1310">
+<title>gesturectl</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header>
+  <span class="brand">gesturectl</span>
+  <span id="link" class="link" data-state="reconnecting">connecting</span>
+</header>
+
+<nav>
+  <button data-screen="sensor" class="on">Sensor</button>
+  <button data-screen="devices">Devices</button>
+  <button data-screen="settings">Settings</button>
+</nav>
+
+<main>
+
+  <section id="sensor">
+    <div class="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="badge" class="badge" data-state="OFF">CAMERA OFF</div>
+      <svg id="ring" class="ring" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="ring-track" cx="50" cy="50" r="44"></circle>
+        <circle id="ring-fill" class="ring-fill" cx="50" cy="50" r="44"></circle>
+      </svg>
+      <div id="pose" class="pose">—</div>
+    </div>
+
+    <div class="row">
+      <button id="start" class="primary">Start camera</button>
+      <button id="stop" hidden>Stop</button>
+    </div>
+
+    <p id="hint" class="hint"></p>
+
+    <h2>Remote</h2>
+    <p class="sub">Works with no camera — a button and a hand take the same path.</p>
+    <div class="remote">
+      <button data-intent="VOLUME_UP">Vol +</button>
+      <button data-intent="VOLUME_DOWN">Vol −</button>
+      <button data-intent="MUTE_TOGGLE">Mute</button>
+      <button data-intent="PLAY_PAUSE">Play / Pause</button>
+      <button data-intent="POWER_ON">On</button>
+      <button data-intent="POWER_OFF">Off</button>
+    </div>
+
+    <h2>Recent</h2>
+    <ul id="log" class="log"><li class="empty">Nothing yet.</li></ul>
+  </section>
+
+  <section id="devices" hidden>
+    <div class="row">
+      <button id="scan" class="primary">Scan network</button>
+      <span id="scanning" class="sub" hidden>searching…</span>
+    </div>
+    <p id="scan-note" class="hint"></p>
+    <ul id="device-list" class="devices"><li class="empty">No devices yet.</li></ul>
+
+    <h2>Add by IP</h2>
+    <p class="sub">For routers that drop multicast between wifi bands.</p>
+    <form id="by-host" class="row">
+      <input name="host" inputmode="decimal" placeholder="192.168.68.84" required>
+      <select name="kind">
+        <option value="roku">Roku</option>
+        <option value="googletv">Google TV</option>
+      </select>
+      <button type="submit">Add</button>
+    </form>
+    <p class="sub">A Google TV needs pairing once — it shows a code on screen.</p>
+  </section>
+
+  <section id="settings" hidden>
+    <h2>Gestures</h2>
+    <ul id="bindings" class="bindings"><li class="empty">Loading…</li></ul>
+    <h2>Thresholds</h2>
+    <div id="thresholds" class="thresholds"></div>
+    <p class="sub">Changes apply immediately — no restart.</p>
+  </section>
+
+</main>
+
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>

@@ -14,3 +14,4 @@ models/*.task
 .env
 local.yaml
 .roku_host
+certs/
