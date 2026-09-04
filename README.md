@@ -129,8 +129,10 @@ run straight on into a sleep, and holding a pose is one press rather than a
 stream.
 
 Tuning lives in `config.yaml`, not in the source, so you can adjust it from the
-sofa. The three dials that matter: `confirm_frames` (raise for fewer false
-fires, lower for less lag), `cooldown_ms`, and `repeat_ms`.
+sofa. The dials that matter, in the order you will reach for them:
+`hold_ms` on a single binding (the one to use when one specific gesture misfires),
+`confirm_frames` (the global default — raise for fewer false fires, lower for
+less lag), `cooldown_ms`, and `repeat_ms`.
 
 ## How it's put together
 
