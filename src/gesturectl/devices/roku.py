@@ -12,10 +12,15 @@ Two things this adapter refuses to assume:
    cannot be reached; PowerOn only works with "Fast TV Start" enabled under
    Settings > System > Power.
 
-One more thing worth knowing: Roku OS 14.1 began requiring
-Settings > System > Advanced system settings > Control by mobile apps >
-Network access to be permissive before keypresses are accepted. Older firmware
-generally just answers.
+Two more things worth knowing:
+
+* Roku OS 14.1 began requiring Settings > System > Advanced system settings >
+  Control by mobile apps > Network access to allow control before keypresses
+  are accepted. Older firmware generally just answers.
+* Roku's HTTP server HANGS on a bodyless POST that does not declare its
+  length. Every keypress here sends an explicit Content-Length: 0. Without it
+  a refusal that should arrive instantly as 403 shows up as a socket timeout
+  instead, which points the diagnosis at entirely the wrong thing.
 """
 
 from __future__ import annotations
@@ -58,7 +63,10 @@ class RokuAdapter(DeviceAdapter):
         self.base_url = self._normalize(host) if host else None
         self.is_tv = False
         self.model = "unknown"
-        self._client = httpx.AsyncClient(timeout=timeout)
+        # Content-Length is not optional here - see the module docstring.
+        self._client = httpx.AsyncClient(
+            timeout=timeout, headers={"Content-Length": "0"}
+        )
 
     @staticmethod
     def _normalize(host: str) -> str:
@@ -106,15 +114,27 @@ class RokuAdapter(DeviceAdapter):
 
     async def _keypress(self, key: str) -> Result:
         try:
-            resp = await self._client.post(f"{self.base_url}/keypress/{key}")
-        except httpx.HTTPError as exc:
-            return Result(False, f"{type(exc).__name__}: {exc}")
-        if resp.status_code >= 400:
+            resp = await self._client.post(
+                f"{self.base_url}/keypress/{key}",
+                content=b"",
+                headers={"Content-Length": "0"},
+            )
+        except httpx.TimeoutException:
             return Result(
                 False,
-                f"HTTP {resp.status_code} - on Roku OS 14.1+ check Settings > System > "
-                "Advanced system settings > Control by mobile apps",
+                "no response - the panel may be asleep, or the TV's ECP server has "
+                "wedged (Settings > System > Power > System restart clears it)",
             )
+        except httpx.HTTPError as exc:
+            return Result(False, f"{type(exc).__name__}: {exc}")
+        if resp.status_code in (401, 403):
+            return Result(
+                False,
+                f"HTTP {resp.status_code} - keypresses are blocked. Settings > System > "
+                "Advanced system settings > Control by mobile apps > Network access",
+            )
+        if resp.status_code >= 400:
+            return Result(False, f"HTTP {resp.status_code}")
         return Result(True, key)
 
     async def _power_toggle(self) -> Result:

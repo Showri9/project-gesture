@@ -18,13 +18,23 @@ python3 scripts/check_roku.py            # discover on the LAN
 python3 scripts/check_roku.py --poke     # and actually move the volume
 ```
 
-If it reports `is-tv true` and the poke is accepted, you're unblocked. If the
-poke returns HTTP 403, enable *Settings → System → Advanced system settings →
-Control by mobile apps → Network access* (Roku OS 14.1+ requires it; older
-firmware generally just answers).
+If it reports `is-tv true` and the poke is accepted, you're unblocked.
 
-**2. Enable Fast TV Start** under *Settings → System → Power*. A TV that fully
+If the poke returns **HTTP 403**, keypresses are blocked by a TV setting:
+*Settings → System → Advanced system settings → Control by mobile apps →
+Network access*. Recent Roku OS ships this as **Limited**, which blocks
+third-party control; set it to **Enabled**. (Roku OS 14.1+ enforces this;
+older firmware ignored it. ECP is unauthenticated, so once enabled, anything
+on your network can drive the TV — that is inherent to the protocol.)
+
+If the poke **times out** instead, that is a different fault: check the POST
+carries `Content-Length: 0` (Roku hangs without it), then that the panel is
+awake, then restart the TV.
+
+**2. Check Fast TV Start** under *Settings → System → Power*. A TV that fully
 powers down leaves the network, so without this, `PowerOn` can never reach it.
+If step 1 reported `power-mode: Ready`, it is already on — a fully-off Roku TV
+answers nothing at all, so a reply while the TV is off is the proof.
 
 **3. Test the range from your sofa.** This is the real risk in the project.
 
