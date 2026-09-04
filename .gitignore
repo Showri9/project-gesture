@@ -13,3 +13,4 @@ models/*.task
 .DS_Store
 .env
 local.yaml
+.roku_host

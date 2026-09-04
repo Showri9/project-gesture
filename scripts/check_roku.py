@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import http.client
 import re
+import pathlib
 import socket
 import sys
 import time
@@ -40,28 +41,82 @@ AWAKE = {"poweron"}
 TIMEOUT = object()  # sentinel: the request went unanswered
 
 
-def discover(timeout: float = 4.0) -> list[str]:
+CACHE = pathlib.Path(__file__).resolve().parents[1] / ".roku_host"
+
+
+def _msearch(st: str) -> bytes:
+    return (
+        "M-SEARCH * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        'MAN: "ssdp:discover"\r\n'
+        f"ST: {st}\r\n"
+        "MX: 2\r\n\r\n"
+    ).encode()
+
+
+def discover(timeout: float = 5.0) -> list[str]:
+    """SSDP is UDP multicast, which is lossy - a single M-SEARCH gets dropped
+    routinely, especially across wifi bands. Send several, and if the targeted
+    search finds nothing, fall back to a broad one and filter for port 8060."""
+    found: list[str] = []
+    for st in ("roku:ecp", "ssdp:all"):
+        found = _sweep(st, timeout)
+        if found:
+            break
+    return found
+
+
+def _sweep(st: str, timeout: float) -> list[str]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-    sock.settimeout(0.5)
+    sock.settimeout(0.4)
+
     found: list[str] = []
+    packet = _msearch(st)
     deadline = time.monotonic() + timeout
+    next_send = 0.0
     try:
-        sock.sendto(MSEARCH, SSDP_ADDR)
         while time.monotonic() < deadline:
+            now = time.monotonic()
+            if now >= next_send:
+                try:
+                    sock.sendto(packet, SSDP_ADDR)
+                except OSError:
+                    pass
+                next_send = now + 1.2      # re-announce; UDP loses packets
             try:
                 data, _ = sock.recvfrom(2048)
             except (socket.timeout, TimeoutError):
                 continue
             m = re.search(rb"^LOCATION:\s*(\S+)", data, re.I | re.M)
-            if m:
-                url = m.group(1).decode().rstrip("/")
-                if url not in found:
-                    found.append(url)
+            if not m:
+                continue
+            url = m.group(1).decode().rstrip("/")
+            if ":8060" not in url:         # ssdp:all returns every device on the LAN
+                continue
+            base = url.split("/", 3)
+            base = "/".join(base[:3]) if len(base) >= 3 else url
+            if base not in found:
+                found.append(base)
     finally:
         sock.close()
     return found
+
+
+def remember(base: str) -> None:
+    try:
+        CACHE.write_text(base + "\n")
+    except OSError:
+        pass
+
+
+def recall() -> str | None:
+    try:
+        value = CACHE.read_text().strip()
+        return value or None
+    except OSError:
+        return None
 
 
 def _conn(base: str, timeout: float) -> http.client.HTTPConnection:
@@ -137,16 +192,28 @@ def main() -> int:
     if args.host:
         base = args.host if args.host.startswith("http") else f"http://{args.host}:8060"
         targets = [base.rstrip("/")]
+        remember(targets[0])
     else:
-        print("Searching the LAN for a Roku (SSDP, 4s)...")
+        print("Searching the LAN for a Roku (SSDP)...")
         targets = discover()
         if not targets:
-            print("\n  Nothing answered.")
-            print("  - same wifi/subnet as the TV?")
-            print("  - some routers block multicast between 2.4GHz and 5GHz bands")
-            print("  - try naming the IP: python3 scripts/check_roku.py 192.168.68.84")
-            return 1
-        print(f"  found {len(targets)}: {', '.join(targets)}\n")
+            cached = recall()
+            if cached:
+                print(f"  Nothing answered - falling back to {cached}")
+                print("  (SSDP is lossy UDP multicast; the TV is usually still there.)\n")
+                targets = [cached]
+            else:
+                print("\n  Nothing answered.")
+                print("  - same wifi/subnet as the TV? Multicast often fails between")
+                print("    a 2.4GHz and a 5GHz band on the same router")
+                print("  - macOS may be blocking it: System Settings > Privacy & Security")
+                print("    > Local Network, and enable your terminal")
+                print("  - discovery is a convenience, not a requirement. Name the IP:")
+                print("      python3 scripts/check_roku.py 192.168.68.84 --poke")
+                return 1
+        else:
+            print(f"  found {len(targets)}: {', '.join(targets)}\n")
+            remember(targets[0])
 
     ok = True
     for base in targets:
