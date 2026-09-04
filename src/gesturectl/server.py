@@ -61,6 +61,19 @@ def main() -> int:
             print("there with no certificate at all.\n")
             return 2
 
+    try:
+        import websockets  # noqa: F401
+    except ImportError:
+        try:
+            import wsproto  # noqa: F401
+        except ImportError:
+            print("\nNo WebSocket support installed.")
+            print("\nBare uvicorn cannot speak WebSocket, so the pose stream and the")
+            print("event stream would both answer 404 with only a warning in the log")
+            print("to explain it. Install:\n")
+            print("  pip install 'uvicorn[standard]'\n")
+            return 2
+
     import uvicorn
 
     from .api import create_app
