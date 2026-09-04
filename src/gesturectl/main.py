@@ -21,10 +21,44 @@ from pathlib import Path
 from . import config as config_module
 from .capture import Camera
 from .hud import draw
-from .intents import SESSION_ONLY, IntentMessage
+from .intents import SESSION_ONLY, Intent, IntentMessage
 from .session import SessionMachine
 
 log = logging.getLogger("gesturectl")
+
+
+#: how each intent reads in the legend, in the order people use them
+_LEGEND_ORDER = [
+    Intent.SESSION_TOGGLE, Intent.SESSION_WAKE, Intent.SESSION_SLEEP,
+    Intent.VOLUME_UP, Intent.VOLUME_DOWN, Intent.MUTE_TOGGLE,
+    Intent.PLAY_PAUSE, Intent.POWER_TOGGLE,
+]
+
+_LEGEND_TEXT = {
+    Intent.SESSION_TOGGLE: "wake / sleep (hold to wake, release, repeat to sleep)",
+    Intent.SESSION_WAKE: "wake",
+    Intent.SESSION_SLEEP: "sleep",
+    Intent.VOLUME_UP: "volume up (ramps while held)",
+    Intent.VOLUME_DOWN: "volume down (ramps while held)",
+    Intent.MUTE_TOGGLE: "mute",
+    Intent.PLAY_PAUSE: "play / pause",
+    Intent.POWER_TOGGLE: "power on / off (longer hold)",
+}
+
+
+def _print_bindings(cfg) -> None:
+    """Print the legend from the actual config, so it can never drift from it."""
+    by_intent = {intent: pose for pose, intent in cfg.bindings.items()}
+    print()
+    for intent in _LEGEND_ORDER:
+        pose = by_intent.get(intent)
+        if pose:
+            print(f"  {pose:<14} {_LEGEND_TEXT[intent]}")
+    for pose, intent in cfg.bindings.items():
+        if intent not in _LEGEND_ORDER:
+            print(f"  {pose:<14} {intent.value}")
+    print("  q or Esc        quit")
+    print()
 
 
 def build_adapter(device_cfg):
@@ -123,12 +157,7 @@ def main() -> int:
     dispatcher.start()
     log.info("%s", dispatcher.status_line)
 
-    print()
-    print("  Open palm, held ~1s  ->  wake        Fist          ->  sleep")
-    print("  Thumb up / down      ->  volume      Victory       ->  mute")
-    print("  Point up             ->  play/pause  I-love-you    ->  power (asks twice)")
-    print("  q or Esc to quit")
-    print()
+    _print_bindings(cfg)
 
     camera = Camera(cfg.vision.camera_index, cfg.vision.width, cfg.vision.height)
     import cv2

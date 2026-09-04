@@ -42,8 +42,16 @@ class SessionConfig:
     #: through fist-like shapes on its way down from the wake gesture, so an
     #: instant sleep makes the system disarm itself the moment it wakes.
     sleep_confirm_frames: int = 4
-    #: SESSION_SLEEP is ignored for this long after arming, for the same reason
+    #: SESSION_SLEEP is ignored for this long after arming, for the same reason.
+    #: With one gesture toggling wake and sleep this is doubly load-bearing:
+    #: without it, the hold that wakes you would immediately put you back down.
     wake_grace_ms: float = 1_000.0
+    #: POWER_TOGGLE is the costliest action, so it gets a longer hold than
+    #: everything else instead of a second confirmation.
+    power_confirm_frames: int = 15
+    #: require the power gesture twice (drop the pose in between). Off by
+    #: default: a single deliberate hold reads better than a double-tap.
+    double_confirm_power: bool = False
     #: how long the second half of a double-confirm may take
     confirm_window_ms: float = 3_000.0
 
@@ -98,12 +106,16 @@ class SessionMachine:
     def state(self) -> State:
         return self._state
 
+    def _frames_needed(self, intent: Intent) -> int:
+        """Power holds longer than everything else. Weight the effort to the
+        cost of being wrong."""
+        if intent is Intent.POWER_TOGGLE:
+            return max(self.config.power_confirm_frames, 1)
+        return max(self.config.confirm_frames, 1)
+
     def status(self, now_ms: float = 0.0) -> Status:
-        progress = (
-            min(1.0, self._frames / self.config.confirm_frames)
-            if self.config.confirm_frames
-            else 1.0
-        )
+        needed = self._frames_needed(self._candidate) if self._candidate else 1
+        progress = min(1.0, self._frames / needed)
         return Status(
             state=self._state,
             candidate=self._candidate,
@@ -142,7 +154,7 @@ class SessionMachine:
     ) -> IntentMessage | None:
         """Nothing dispatches until the wake gesture is held. This single gate
         is what kills ambient false positives."""
-        if intent is not Intent.SESSION_WAKE:
+        if intent not in (Intent.SESSION_WAKE, Intent.SESSION_TOGGLE):
             self._wake_started_ms = None
             return None
 
@@ -152,6 +164,10 @@ class SessionMachine:
 
         if now_ms - self._wake_started_ms >= self.config.wake_hold_ms:
             self._arm(now_ms)
+            # Latch the gesture that woke us. With one gesture toggling both
+            # ways, the hold that wakes you would otherwise run straight on into
+            # a sleep - you must release the pose before it can act again.
+            self._latched = intent
             return self._message(Intent.SESSION_WAKE, pose, 1.0, repeat=False)
         return None
 
@@ -166,11 +182,25 @@ class SessionMachine:
             self._to_idle()
             return None
 
-        if intent is Intent.SESSION_SLEEP:
-            # Lowering your hand from the wake pose passes through something the
-            # model reads as a fist. Firing on the first frame of that means the
-            # session disarms itself a fraction of a second after it wakes.
-            if now_ms - self._armed_at_ms < cfg.wake_grace_ms:
+        # Release-before-repeat, checked before anything else can act. A pose
+        # that has already done its job stays inert until you drop it, which is
+        # what makes one gesture safe to use for both wake and sleep.
+        if intent is not self._latched:
+            self._latched = None
+        elif self._latched is not None:
+            return None
+
+        if intent in (Intent.SESSION_SLEEP, Intent.SESSION_TOGGLE):
+            # Two different hazards, two different guards. A separate sleep
+            # gesture (a fist) is at risk from a hand relaxing down out of the
+            # wake pose, so it waits out wake_grace_ms. A toggle gesture is at
+            # risk from the wake hold continuing, which the latch above already
+            # handles - so applying the grace to it as well would only block
+            # legitimate quick toggles.
+            if (
+                intent is Intent.SESSION_SLEEP
+                and now_ms - self._armed_at_ms < cfg.wake_grace_ms
+            ):
                 self._reset_candidate()
                 return None
             self._sleep_frames += 1
@@ -182,15 +212,8 @@ class SessionMachine:
         self._sleep_frames = 0
 
         if intent is Intent.SESSION_WAKE or intent is None:
-            self._latched = None
             self._reset_candidate()
             return None
-
-        # the pose that just fired is still being held: wait for a release.
-        # Without this, two seconds of Victory is four mutes.
-        if self._latched is intent:
-            return None
-        self._latched = None
 
         # a repeatable pose that is still held keeps firing at repeat_ms
         if self._repeating is intent:
@@ -209,7 +232,7 @@ class SessionMachine:
             return None
 
         self._frames += 1
-        if self._frames < cfg.confirm_frames:
+        if self._frames < self._frames_needed(intent):
             return None
 
         # counter satisfied - but the cooldown may still block it
@@ -226,7 +249,7 @@ class SessionMachine:
     ) -> IntentMessage | None:
         cfg = self.config
 
-        if intent in NEEDS_CONFIRMATION:
+        if cfg.double_confirm_power and intent in NEEDS_CONFIRMATION:
             # first pass arms the confirmation and fires nothing; the user must
             # drop the pose and make it again. Costly actions earn a second ask.
             if self._pending is not intent:

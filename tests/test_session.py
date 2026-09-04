@@ -141,7 +141,35 @@ def test_same_discrete_intent_can_fire_again_after_cooldown(machine):
 
 # -- power needs asking twice ------------------------------------------------
 
-def test_power_requires_a_second_confirmation(machine):
+@pytest.fixture
+def strict_power():
+    """Power with the optional double-confirm turned on."""
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600,
+        repeat_ms=60, idle_timeout_ms=10_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000,
+        power_confirm_frames=4, double_confirm_power=True,
+    )
+    return SessionMachine(cfg, BINDINGS, target="living-room")
+
+
+def test_power_fires_on_one_deliberate_hold_by_default(machine):
+    """Default is a single long hold, not a double-tap: 'show it to turn on,
+    show it again to turn off' is the mental model users actually have."""
+    t = wake(machine)
+    msgs, _ = feed(machine, "ILoveYou", 20, start_ms=t)
+    assert [m.intent for _, m in msgs] == [Intent.POWER_TOGGLE]
+
+
+def test_power_holds_longer_than_other_intents(machine):
+    """power_confirm_frames is 15 by default against confirm_frames of 4."""
+    t = wake(machine)
+    msgs, _ = feed(machine, "ILoveYou", 10, start_ms=t)
+    assert msgs == [], "10 frames is enough for a normal intent, not for power"
+
+
+def test_power_requires_a_second_confirmation(strict_power):
+    machine = strict_power
     t = wake(machine)
     msgs, t = feed(machine, "ILoveYou", 10, start_ms=t)
     assert msgs == [], "power must not fire on the first pass"
@@ -152,7 +180,8 @@ def test_power_requires_a_second_confirmation(machine):
     assert [m.intent for _, m in msgs] == [Intent.POWER_TOGGLE]
 
 
-def test_pending_power_confirmation_expires(machine):
+def test_pending_power_confirmation_expires(strict_power):
+    machine = strict_power
     t = wake(machine)
     _, t = feed(machine, "ILoveYou", 10, start_ms=t)
     assert machine.status(t).pending is Intent.POWER_TOGGLE
@@ -197,3 +226,64 @@ def test_after_sleep_gestures_are_ignored_again(machine):
     _, t = feed(machine, "Closed_Fist", 8, start_ms=t + 1_500.0)
     msgs, _ = feed(machine, "Victory", 30, start_ms=t + 100.0)
     assert msgs == []
+
+
+# -- one gesture toggling wake and sleep -------------------------------------
+
+TOGGLE_BINDINGS = {
+    "Victory": Intent.SESSION_TOGGLE,
+    "Thumb_Up": Intent.VOLUME_UP,
+    "Open_Palm": Intent.POWER_TOGGLE,
+    "Closed_Fist": Intent.MUTE_TOGGLE,
+}
+
+
+@pytest.fixture
+def toggler():
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600,
+        repeat_ms=60, idle_timeout_ms=10_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000, power_confirm_frames=15,
+    )
+    return SessionMachine(cfg, TOGGLE_BINDINGS, target="living-room")
+
+
+def test_toggle_wakes_from_idle(toggler):
+    msgs, _ = feed(toggler, "Victory", 30)
+    assert [m.intent for _, m in msgs] == [Intent.SESSION_WAKE]
+    assert toggler.state is State.ARMED
+
+
+def test_holding_the_toggle_does_not_immediately_sleep(toggler):
+    """The whole hazard of one-gesture toggling: the hold that wakes you must
+    not roll straight into a sleep. wake_grace_ms is what prevents it."""
+    msgs, _ = feed(toggler, "Victory", 60)   # ~2s of continuous Victory
+    assert [m.intent for _, m in msgs] == [Intent.SESSION_WAKE]
+    assert toggler.state is State.ARMED
+
+
+def test_toggle_again_later_sleeps(toggler):
+    _, t = feed(toggler, "Victory", 30)
+    toggler.update(None, 0.0, t)                       # hand down
+    msgs, _ = feed(toggler, "Victory", 10, start_ms=t + 1_500.0)
+    assert [m.intent for _, m in msgs] == [Intent.SESSION_SLEEP]
+    assert toggler.state is State.IDLE
+
+
+def test_toggle_reports_concrete_actions_never_the_toggle(toggler):
+    """Nothing downstream should ever see SESSION_TOGGLE."""
+    _, t = feed(toggler, "Victory", 30)
+    toggler.update(None, 0.0, t)
+    msgs, _ = feed(toggler, "Victory", 10, start_ms=t + 1_500.0)
+    seen = {m.intent for _, m in msgs}
+    assert Intent.SESSION_TOGGLE not in seen
+
+
+def test_full_cycle_wake_act_sleep(toggler):
+    _, t = feed(toggler, "Victory", 30)
+    toggler.update(None, 0.0, t)
+    vol, t2 = feed(toggler, "Thumb_Up", 10, start_ms=t + 200.0)
+    assert vol and vol[0][1].intent is Intent.VOLUME_UP
+    toggler.update(None, 0.0, t2)
+    sleep, _ = feed(toggler, "Victory", 10, start_ms=t2 + 100.0)
+    assert [m.intent for _, m in sleep] == [Intent.SESSION_SLEEP]

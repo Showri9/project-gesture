@@ -84,12 +84,19 @@ sleep, and so does ten seconds with no hand in frame.
 
 | Pose | Does |
 |---|---|
-| Open palm (held) | wake |
-| Fist | sleep |
+| Victory | **wake / sleep** — hold to wake, release, show again to sleep |
 | Thumb up / down | volume, ramping while held |
-| Victory | mute |
+| Fist | mute |
 | Point up | play / pause |
-| "I love you" | power — asks twice |
+| Open palm | power on / off — holds ~3× longer than anything else |
+
+Nothing but the wake gesture does anything until you wake it. That single gate
+is what stops the TV reacting to you scratching your nose.
+
+A gesture that has just acted stays inert until you **release** it. That is what
+makes one pose safe for both halves of a toggle: the hold that wakes you cannot
+run straight on into a sleep, and holding a pose is one press rather than a
+stream.
 
 Tuning lives in `config.yaml`, not in the source, so you can adjust it from the
 sofa. The three dials that matter: `confirm_frames` (raise for fewer false

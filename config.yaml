@@ -20,13 +20,22 @@ session:
   wake_grace_ms: 1000       # ignore the sleep gesture this long after waking
 
 bindings:
-  Open_Palm:    SESSION_WAKE
-  Closed_Fist:  SESSION_SLEEP
+  # Victory toggles the session: wake when idle, sleep when armed. Safe on one
+  # gesture because a pose that has acted stays inert until you release it.
+  Victory:      SESSION_TOGGLE
+
+  # Power also toggles - the adapter reads power-mode and sends PowerOn or
+  # PowerOff accordingly, so the same gesture turns the TV on and off.
+  # It holds ~3x longer than anything else (session.power_confirm_frames).
+  Open_Palm:    POWER_TOGGLE
+
   Thumb_Up:     VOLUME_UP
   Thumb_Down:   VOLUME_DOWN
-  Victory:      MUTE_TOGGLE
+  Closed_Fist:  MUTE_TOGGLE
   Pointing_Up:  PLAY_PAUSE
-  ILoveYou:     POWER_TOGGLE
+
+  # ILoveYou is free. Available poses are exactly these seven until custom
+  # gestures are trained with MediaPipe Model Maker.
 
 devices:
   - name: living-room

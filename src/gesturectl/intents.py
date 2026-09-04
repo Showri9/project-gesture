@@ -17,6 +17,10 @@ class Intent(str, Enum):
     # session control - handled locally, never dispatched to a device
     SESSION_WAKE = "SESSION_WAKE"
     SESSION_SLEEP = "SESSION_SLEEP"
+    #: one gesture for both: wakes when idle, sleeps when armed. The machine
+    #: resolves it and reports the concrete WAKE or SLEEP that happened, so
+    #: nothing downstream ever sees a TOGGLE.
+    SESSION_TOGGLE = "SESSION_TOGGLE"
 
     # playback and audio
     VOLUME_UP = "VOLUME_UP"
@@ -47,7 +51,9 @@ REPEATABLE: frozenset[Intent] = frozenset(
 NEEDS_CONFIRMATION: frozenset[Intent] = frozenset({Intent.POWER_TOGGLE})
 
 #: Handled by the session machine itself, never sent to a device.
-SESSION_ONLY: frozenset[Intent] = frozenset({Intent.SESSION_WAKE, Intent.SESSION_SLEEP})
+SESSION_ONLY: frozenset[Intent] = frozenset(
+    {Intent.SESSION_WAKE, Intent.SESSION_SLEEP, Intent.SESSION_TOGGLE}
+)
 
 
 class Source(str, Enum):
