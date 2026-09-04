@@ -4,10 +4,15 @@ version = "0.1.0"
 description = "Hand-gesture control for TVs and, later, everything else"
 requires-python = ">=3.11"
 dependencies = [
-    # 1.0 moved the Python bindings from pybind11 to a ctypes C API, which is
-    # why the wheel is now py3-none and installs on interpreters newer than
-    # its stale 3.9-3.12 classifiers claim. The Tasks API is unchanged.
-    "mediapipe>=1.0",
+    # PINNED, and not casually. The macOS arm64 wheels for 1.0.0 and 1.0.1 are
+    # built with calculators that require kGpuService, which the Tasks API
+    # never installs on the graph, so EVERY task aborts at Open() with
+    #   graph_service.h:139] Check failed: service_ Service is unavailable
+    # It is an uncatchable abort, not an exception, and no combination of task,
+    # running mode or delegate avoids it - verified across all six by
+    # scripts/probe_mediapipe.py. 0.10.35 is clean on the same machine.
+    # Before raising this pin, run: ./scripts/find_working_mediapipe.sh
+    "mediapipe==0.10.35",
     # OpenCV 5 is very new and this project needs nothing from it. Pinned back
     # deliberately; relax it once 5.x has settled on macOS.
     "opencv-python>=4.10,<5",

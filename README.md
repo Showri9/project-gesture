@@ -48,10 +48,14 @@ python3 scripts/doctor.py
 `doctor.py` checks the interpreter, the imports, the model file and the camera,
 and tells you what to do about each failure. Two things it watches for:
 
-- **Python 3.13+.** MediaPipe advertises 3.9–3.12. Since 1.0 its wheel is
-  `py3-none` (the bindings moved from pybind11 to a ctypes C API), so it usually
-  works on newer interpreters anyway — but if `import mediapipe` fails, build the
-  venv on 3.12 instead.
+- **The MediaPipe pin.** `mediapipe` is pinned to **0.10.35** deliberately.
+  The macOS arm64 wheels for 1.0.x abort at startup with
+  `Check failed: service_ Service is unavailable` — their calculators require
+  `kGpuService` and the Tasks API never installs it. It's an uncatchable abort,
+  and no task, running mode or delegate avoids it. Don't raise the pin without
+  running `./scripts/find_working_mediapipe.sh` first.
+- **Python 3.13+ is fine.** MediaPipe advertises 3.9–3.12, but the wheel is
+  `py3-none`, and 0.10.35 is confirmed working on 3.14.6 / arm64.
 - **Camera permission.** On macOS the terminal needs it under
   *System Settings → Privacy & Security → Camera*, and a denied camera looks
   identical to a missing one.

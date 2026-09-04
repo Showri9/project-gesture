@@ -51,6 +51,26 @@ def check_import(name: str, hint: str = "") -> bool:
         return False
 
 
+def check_mediapipe_version() -> bool:
+    """Guard the pin. `pip install -U mediapipe` reintroduces a crash that looks
+    like a Metal problem and is really a missing graph service, and the failure
+    is an abort rather than an exception - so catch it here, in words."""
+    try:
+        import mediapipe as mp
+    except Exception:
+        return True  # the import check already reported this
+    version = getattr(mp, "__version__", "0")
+    major = int(version.split(".")[0]) if version[:1].isdigit() else 0
+    if major >= 1 and sys.platform == "darwin":
+        line(BAD, "mediapipe pin", f"{version} - known broken on macOS arm64")
+        print("        1.x aborts at Open() with 'Service is unavailable': its")
+        print("        calculators require kGpuService and the Tasks API never")
+        print("        installs it. Not fixable by any option.")
+        print("          pip install 'mediapipe==0.10.35'")
+        return False
+    return True
+
+
 def check_model() -> bool:
     path = ROOT / "models" / "gesture_recognizer.task"
     if not path.exists():
@@ -104,6 +124,7 @@ def main() -> int:
         check_python(),
         check_import("cv2", "not installed - run: pip install -e '.[dev]'"),
         check_import("mediapipe"),
+        check_mediapipe_version(),
         check_import("httpx"),
         check_import("yaml"),
         check_model(),
