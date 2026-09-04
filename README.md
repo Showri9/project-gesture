@@ -219,6 +219,16 @@ Google TV needs the optional extra and a one-time pairing:
 pip install -e ".[googletv]"
 ```
 
+If **Scan network** doesn't find it:
+
+```bash
+python3 scripts/check_googletv.py
+```
+
+That browses mDNS for the remote service and for Chromecast, and the difference
+tells you which problem you have — a TV that is asleep, a network not carrying
+multicast, or simply the extra not installed.
+
 Add it on the Devices screen — pick **Google TV**, enter its IP, then **Pair**.
 The TV puts a six-digit code on screen; type that back. The certificate it
 issues is kept in `certs/`, so it is asked for once and not again.

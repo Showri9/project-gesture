@@ -15,7 +15,11 @@ from dataclasses import dataclass
 
 from ..config import AppConfig, DeviceConfig
 from ..devices.base import DeviceAdapter
-from ..devices.discover import discover_googletv, discover_roku
+from ..devices.discover import (
+    discover_googletv,
+    discover_roku,
+    googletv_discovery_available,
+)
 from ..intents import SESSION_ONLY, Intent, IntentMessage, Source
 from ..session import SessionMachine
 from .events import EventBus
@@ -204,7 +208,10 @@ class Hub:
         found += [self.add_device(host, kind="googletv") for host in google_hosts]
         for record in found:
             await self.refresh(record)
-        self.events.publish("discovery", scanning=False, found=[r.id for r in found])
+        self.events.publish(
+            "discovery", scanning=False, found=[r.id for r in found],
+            googletv_available=googletv_discovery_available(),
+        )
         return found
 
     # -- dispatch -----------------------------------------------------------

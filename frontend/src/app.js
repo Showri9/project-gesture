@@ -59,7 +59,15 @@ function onEvent(event) {
       break;
     case "discovery":
       $("scanning").hidden = !event.scanning;
-      if (!event.scanning) loadDevices();
+      if (!event.scanning) {
+        loadDevices();
+        // An empty scan looks identical whether nothing answered or the
+        // optional extra simply is not installed. Say which.
+        $("scan-note").textContent =
+          event.googletv_available === false
+            ? "Google TV discovery is off — pip install -e '.[googletv]'"
+            : "";
+      }
       break;
   }
 }

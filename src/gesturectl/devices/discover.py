@@ -56,6 +56,16 @@ def discover_roku(timeout: float = 4.0) -> list[str]:
 _GOOGLETV_SERVICE = "_androidtvremote2._tcp.local."
 
 
+def googletv_discovery_available() -> bool:
+    """False when the optional extra is not installed. Worth reporting rather
+    than letting an empty result look like an empty network."""
+    try:
+        import zeroconf  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def discover_googletv(timeout: float = 4.0) -> list[str]:
     """Google TV announces over mDNS, not SSDP, so it needs its own sweep.
 
@@ -63,10 +73,9 @@ def discover_googletv(timeout: float = 4.0) -> list[str]:
     installed - Google TV support is optional, and a missing extra should not
     break discovery for someone who only owns a Roku.
     """
-    try:
-        from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
-    except ImportError:
+    if not googletv_discovery_available():
         return []
+    from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 
     found: list[str] = []
 
