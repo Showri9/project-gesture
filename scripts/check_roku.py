@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
 """Step 1. Prove the TV is controllable before writing anything else.
 
-Standard library only - run it before you install a single dependency:
+Standard library only - run it before you install a single dependency.
 
-    python3 scripts/check_roku.py              # discover on the LAN
-    python3 scripts/check_roku.py 192.168.1.20 # or name the host
+    python3 scripts/check_roku.py                 # discover and report
+    python3 scripts/check_roku.py --poke          # wake if asleep, then nudge volume
+    python3 scripts/check_roku.py --poke --no-wake  # poke without waking (to reproduce a hang)
+    python3 scripts/check_roku.py 192.168.68.84 --poke
 
-It reports what the device is, what it can do, and - with --poke - actually
-nudges the volume so you can confirm with your own ears.
+GET and POST fail differently on Roku, and the difference is the diagnosis:
+
+  403 / 401  -> keypresses are blocked by a setting, the TV is fine
+  timeout    -> nothing answered at all; usually the panel is asleep
+  200        -> working
 """
 
 from __future__ import annotations
 
+import argparse
+import http.client
 import re
 import socket
 import sys
 import time
-import urllib.error
-import urllib.request
+import urllib.parse
 
 SSDP_ADDR = ("239.255.255.250", 1900)
 MSEARCH = (
@@ -27,6 +33,11 @@ MSEARCH = (
     "ST: roku:ecp\r\n"
     "MX: 3\r\n\r\n"
 ).encode()
+
+#: power-mode values that mean the panel is actually on
+AWAKE = {"poweron"}
+
+TIMEOUT = object()  # sentinel: the request went unanswered
 
 
 def discover(timeout: float = 4.0) -> list[str]:
@@ -53,86 +64,136 @@ def discover(timeout: float = 4.0) -> list[str]:
     return found
 
 
+def _conn(base: str, timeout: float) -> http.client.HTTPConnection:
+    parts = urllib.parse.urlparse(base)
+    return http.client.HTTPConnection(parts.hostname, parts.port or 8060, timeout=timeout)
+
+
+def request(base: str, method: str, path: str, timeout: float = 5.0):
+    """Return (status, body) or (TIMEOUT, reason). Explicit Content-Length,
+    because Roku's HTTP server is fussy about bodyless POSTs."""
+    conn = _conn(base, timeout)
+    try:
+        conn.request(method, path, body=b"", headers={"Content-Length": "0"})
+        resp = conn.getresponse()
+        return resp.status, resp.read().decode("utf-8", "replace")
+    except (socket.timeout, TimeoutError):
+        return TIMEOUT, "no response within %.0fs" % timeout
+    except OSError as exc:
+        return TIMEOUT, str(exc)
+    finally:
+        conn.close()
+
+
 def field(xml: str, tag: str) -> str:
     m = re.search(rf"<{tag}>([^<]*)</{tag}>", xml, re.I)
     return m.group(1).strip() if m else "?"
 
 
-def get(url: str, timeout: float = 4.0) -> str:
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "replace")
-
-
-def post(url: str, timeout: float = 4.0) -> int:
-    req = urllib.request.Request(url, data=b"", method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status
-    except urllib.error.HTTPError as exc:
-        return exc.code
+def explain_failure(status, note: str) -> None:
+    if status is TIMEOUT:
+        print(f"  TIMED OUT ({note})")
+        print()
+        print("  A timeout is not a permissions problem - a blocked keypress")
+        print("  answers 403 immediately. Nothing answered at all, which means:")
+        print()
+        print("   1. The panel is asleep. Turn the TV on with the remote and re-run.")
+        print("      (--poke wakes it first; --no-wake skips that, to reproduce this.)")
+        print("   2. If it hangs with the TV visibly ON, reboot the TV:")
+        print("      Settings > System > Power > System restart. Roku's ECP server")
+        print("      is known to wedge until a restart on recent firmware.")
+        return
+    if status in (401, 403):
+        print(f"  REFUSED (HTTP {status})")
+        print()
+        print("  The TV answered, it just won't accept keypresses. Enable:")
+        print("  Settings > System > Advanced system settings >")
+        print("  Control by mobile apps > Network access  ->  Default or Permissive")
+        print("  (Roku OS 14.1+ requires this; older firmware didn't.)")
+        return
+    print(f"  Unexpected HTTP {status}")
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    poke = "--poke" in sys.argv
+    parser = argparse.ArgumentParser()
+    parser.add_argument("host", nargs="?", help="IP or URL; omit to discover")
+    parser.add_argument("--poke", action="store_true", help="actually send keypresses")
+    parser.add_argument("--no-wake", action="store_true",
+                        help="don't send PowerOn first, even if the TV is asleep")
+    parser.add_argument("--timeout", type=float, default=5.0)
+    args = parser.parse_args()
 
-    if args:
-        host = args[0]
-        base = host if host.startswith("http") else f"http://{host}:8060"
+    if args.host:
+        base = args.host if args.host.startswith("http") else f"http://{args.host}:8060"
         targets = [base.rstrip("/")]
     else:
         print("Searching the LAN for a Roku (SSDP, 4s)...")
         targets = discover()
         if not targets:
             print("\n  Nothing answered.")
-            print("  - is this machine on the same wifi/subnet as the TV?")
+            print("  - same wifi/subnet as the TV?")
             print("  - some routers block multicast between 2.4GHz and 5GHz bands")
-            print("  - try again naming the IP: python3 scripts/check_roku.py 192.168.1.20")
+            print("  - try naming the IP: python3 scripts/check_roku.py 192.168.68.84")
             return 1
         print(f"  found {len(targets)}: {', '.join(targets)}\n")
 
     ok = True
     for base in targets:
         print(f"=== {base} ===")
-        try:
-            xml = get(f"{base}/query/device-info")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  UNREACHABLE: {exc}\n")
+        status, body = request(base, "GET", "/query/device-info", args.timeout)
+        if status is TIMEOUT or status >= 400:
+            print(f"  device-info failed: {body}\n")
             ok = False
             continue
 
-        is_tv = field(xml, "is-tv").lower() == "true"
-        print(f"  model        {field(xml, 'model-name')}")
-        print(f"  software     {field(xml, 'software-version')}")
-        print(f"  power-mode   {field(xml, 'power-mode')}")
+        is_tv = field(body, "is-tv").lower() == "true"
+        power = field(body, "power-mode")
+        awake = power.lower() in AWAKE
+
+        print(f"  model        {field(body, 'model-name')}")
+        print(f"  software     Roku OS {field(body, 'software-version')}")
+        print(f"  power-mode   {power}" + ("" if awake else "   <- panel is ASLEEP"))
         print(f"  is-tv        {is_tv}")
-
-        if is_tv:
-            print("\n  -> Volume, mute and power keys are available.")
-        else:
-            print("\n  -> This is a stick or box, not a TV: no volume or power keys.")
-            print("     Volume will have to come from a TV adapter or HDMI-CEC.")
-
-        if poke:
-            print("\n  Poking VolumeUp then VolumeDown - listen for a change...")
-            up = post(f"{base}/keypress/VolumeUp")
-            time.sleep(0.4)
-            down = post(f"{base}/keypress/VolumeDown")
-            print(f"  HTTP {up} / {down}")
-            if up >= 400:
-                print("\n  Refused. On Roku OS 14.1+ enable:")
-                print("  Settings > System > Advanced system settings >")
-                print("  Control by mobile apps > Network access")
-                ok = False
-            else:
-                print("  Accepted. ECP is working.")
-        else:
-            print("\n  Re-run with --poke to actually move the volume.")
         print()
 
-    if ok:
-        print("Next: enable Fast TV Start (Settings > System > Power) so PowerOn works,")
-        print("then run scripts/range_test.py from the sofa.")
+        if is_tv:
+            print("  Volume, mute and power keys are available on this device.")
+        else:
+            print("  Stick or box, not a TV: no volume or power keys.")
+        if not awake:
+            print("  Reachable while off, so Fast TV Start is already enabled -")
+            print("  PowerOn will work. (A fully-off Roku TV answers nothing at all.)")
+        print()
+
+        if not args.poke:
+            print("  Re-run with --poke to actually move the volume.\n")
+            continue
+
+        if not awake and not args.no_wake:
+            print("  Waking the TV (PowerOn)...")
+            status, note = request(base, "POST", "/keypress/PowerOn", args.timeout)
+            if status is TIMEOUT or status >= 400:
+                explain_failure(status, note)
+                ok = False
+                print()
+                continue
+            print("  sent. Waiting 6s for the panel to come up...")
+            time.sleep(6)
+
+        print("  Poking VolumeUp, then VolumeDown - listen for a change...")
+        up, up_note = request(base, "POST", "/keypress/VolumeUp", args.timeout)
+        time.sleep(0.4)
+        down, _ = request(base, "POST", "/keypress/VolumeDown", args.timeout)
+
+        if up is not TIMEOUT and up < 400:
+            print(f"  HTTP {up} / {down}   ECP is working. You are unblocked.")
+        else:
+            explain_failure(up, up_note)
+            ok = False
+        print()
+
+    if ok and args.poke:
+        print("Next: python3 scripts/range_test.py, standing where you watch TV.")
     return 0 if ok else 1
 
 
