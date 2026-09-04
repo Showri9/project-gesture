@@ -23,6 +23,7 @@ def machine():
     cfg = SessionConfig(
         wake_hold_ms=800, confirm_frames=4, cooldown_ms=600,
         repeat_ms=60, idle_timeout_ms=10_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000,
     )
     return SessionMachine(cfg, BINDINGS, target="living-room")
 
@@ -161,9 +162,26 @@ def test_pending_power_confirmation_expires(machine):
 
 # -- sleeping ----------------------------------------------------------------
 
-def test_fist_disarms_immediately(machine):
+def test_fist_right_after_waking_does_not_disarm(machine):
+    """Observed live: lowering the hand from the wake pose reads as a fist for a
+    few frames, and the session slept a fraction of a second after waking."""
     t = wake(machine)
-    msgs, _ = feed(machine, "Closed_Fist", 5, start_ms=t)
+    msgs, _ = feed(machine, "Closed_Fist", 8, start_ms=t)
+    assert msgs == []
+    assert machine.state is State.ARMED
+
+
+def test_a_single_fist_frame_does_not_disarm(machine):
+    t = wake(machine)
+    _, t = feed(machine, "Victory", 2, start_ms=t + 1_500.0)   # past the grace
+    msgs = machine.update("Closed_Fist", 0.9, t)
+    assert msgs is None
+    assert machine.state is State.ARMED
+
+
+def test_fist_disarms_once_held_past_the_grace(machine):
+    t = wake(machine)
+    msgs, _ = feed(machine, "Closed_Fist", 8, start_ms=t + 1_500.0)
     assert [m.intent for _, m in msgs] == [Intent.SESSION_SLEEP]
     assert machine.state is State.IDLE
 
@@ -176,6 +194,6 @@ def test_idle_timeout_disarms(machine):
 
 def test_after_sleep_gestures_are_ignored_again(machine):
     t = wake(machine)
-    _, t = feed(machine, "Closed_Fist", 5, start_ms=t)
+    _, t = feed(machine, "Closed_Fist", 8, start_ms=t + 1_500.0)
     msgs, _ = feed(machine, "Victory", 30, start_ms=t + 100.0)
     assert msgs == []

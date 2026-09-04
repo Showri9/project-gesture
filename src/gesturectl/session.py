@@ -38,6 +38,12 @@ class SessionConfig:
     repeat_ms: float = 60.0
     idle_timeout_ms: float = 10_000.0
     min_confidence: float = 0.65
+    #: frames a fist must persist before it disarms. A relaxing hand passes
+    #: through fist-like shapes on its way down from the wake gesture, so an
+    #: instant sleep makes the system disarm itself the moment it wakes.
+    sleep_confirm_frames: int = 4
+    #: SESSION_SLEEP is ignored for this long after arming, for the same reason
+    wake_grace_ms: float = 1_000.0
     #: how long the second half of a double-confirm may take
     confirm_window_ms: float = 3_000.0
 
@@ -69,6 +75,8 @@ class SessionMachine:
 
         self._state = State.IDLE
         self._wake_started_ms: float | None = None
+        self._armed_at_ms: float = 0.0
+        self._sleep_frames = 0
         self._last_pose_ms: float = 0.0
 
         self._candidate: Intent | None = None
@@ -159,8 +167,19 @@ class SessionMachine:
             return None
 
         if intent is Intent.SESSION_SLEEP:
+            # Lowering your hand from the wake pose passes through something the
+            # model reads as a fist. Firing on the first frame of that means the
+            # session disarms itself a fraction of a second after it wakes.
+            if now_ms - self._armed_at_ms < cfg.wake_grace_ms:
+                self._reset_candidate()
+                return None
+            self._sleep_frames += 1
+            if self._sleep_frames < cfg.sleep_confirm_frames:
+                self._reset_candidate()
+                return None
             self._to_idle()
             return self._message(Intent.SESSION_SLEEP, pose, confidence, repeat=False)
+        self._sleep_frames = 0
 
         if intent is Intent.SESSION_WAKE or intent is None:
             self._latched = None
@@ -245,6 +264,8 @@ class SessionMachine:
         self._state = State.ARMED
         self._wake_started_ms = None
         self._last_pose_ms = now_ms
+        self._armed_at_ms = now_ms
+        self._sleep_frames = 0
         self._reset_candidate()
 
     def _to_idle(self) -> None:
@@ -252,6 +273,7 @@ class SessionMachine:
         self._wake_started_ms = None
         self._pending = None
         self._latched = None
+        self._sleep_frames = 0
         self._reset_candidate()
 
     def _reset_candidate(self) -> None:

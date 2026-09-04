@@ -16,6 +16,8 @@ session:
   repeat_ms: 60         # ramp speed while a repeatable pose is held
   idle_timeout_ms: 10000  # no hand for this long -> disarm
   min_confidence: 0.65
+  sleep_confirm_frames: 4   # frames a fist must persist before disarming
+  wake_grace_ms: 1000       # ignore the sleep gesture this long after waking
 
 bindings:
   Open_Palm:    SESSION_WAKE
