@@ -35,8 +35,8 @@ bindings:
   # Power on and off are separate gestures, so you never have to know what state
   # the TV is in. Both are held for 3 seconds: long enough that neither happens
   # by accident while you are reaching for the remote or stretching.
-  Open_Palm:    {intent: POWER_ON,  hold_ms: 3000}
-  ILoveYou:     {intent: POWER_OFF, hold_ms: 3000}
+  Open_Palm:    {intent: POWER_ON,  hold_ms: 1000}
+  ILoveYou:     {intent: POWER_OFF, hold_ms: 2000}
 
   Thumb_Up:     VOLUME_UP
   Thumb_Down:   VOLUME_DOWN
@@ -45,10 +45,10 @@ bindings:
   # Mute is quick on purpose - it is the gesture you want mid-sentence, and
   # getting it wrong costs one more gesture to undo. If it fires by accident,
   # give it a hold too:  Closed_Fist: {intent: MUTE_TOGGLE, hold_ms: 1000}
-  Closed_Fist:  MUTE_TOGGLE
+  Closed_Fist:  {intent: MUTE_TOGGLE, hold_ms: 1000}
 
 devices:
-  - name: living-room
+  - name: bed room
     type: roku
     host: null          # null => autodiscover via SSDP. Run scripts/check_roku.py.
     default: true
