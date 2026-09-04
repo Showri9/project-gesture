@@ -29,8 +29,9 @@ def check_python() -> bool:
         return False
     if v >= (3, 13):
         line(WARN, "python", f"{detail} - newer than MediaPipe advertises (3.9-3.12)")
-        print("        The 1.0 wheel is py3-none so it usually works anyway.")
-        print("        If `import mediapipe` fails below, make a 3.12 venv:")
+        print("        Its 1.0 wheel is py3-none, so this works in practice -")
+        print("        confirmed on 3.14.6 / arm64 with mediapipe 1.0.1.")
+        print("        If `import mediapipe` does fail below, use a 3.12 venv:")
         print("          python3.12 -m venv .venv && source .venv/bin/activate")
         return True
     line(OK, "python", detail)
