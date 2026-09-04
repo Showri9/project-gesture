@@ -4,8 +4,13 @@ version = "0.1.0"
 description = "Hand-gesture control for TVs and, later, everything else"
 requires-python = ">=3.11"
 dependencies = [
-    "mediapipe>=0.10.14",
-    "opencv-python>=4.10",
+    # 1.0 moved the Python bindings from pybind11 to a ctypes C API, which is
+    # why the wheel is now py3-none and installs on interpreters newer than
+    # its stale 3.9-3.12 classifiers claim. The Tasks API is unchanged.
+    "mediapipe>=1.0",
+    # OpenCV 5 is very new and this project needs nothing from it. Pinned back
+    # deliberately; relax it once 5.x has settled on macOS.
+    "opencv-python>=4.10,<5",
     "numpy>=1.26",
     "httpx>=0.27",
     "pyyaml>=6.0",

@@ -36,11 +36,29 @@ powers down leaves the network, so without this, `PowerOn` can never reach it.
 If step 1 reported `power-mode: Ready`, it is already on — a fully-off Roku TV
 answers nothing at all, so a reply while the TV is off is the proof.
 
-**3. Test the range from your sofa.** This is the real risk in the project.
+**3. Install, then check the environment.**
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ./scripts/fetch_model.sh
+python3 scripts/doctor.py
+```
+
+`doctor.py` checks the interpreter, the imports, the model file and the camera,
+and tells you what to do about each failure. Two things it watches for:
+
+- **Python 3.13+.** MediaPipe advertises 3.9–3.12. Since 1.0 its wheel is
+  `py3-none` (the bindings moved from pybind11 to a ctypes C API), so it usually
+  works on newer interpreters anyway — but if `import mediapipe` fails, build the
+  venv on 3.12 instead.
+- **Camera permission.** On macOS the terminal needs it under
+  *System Settings → Privacy & Security → Camera*, and a denied camera looks
+  identical to a missing one.
+
+**4. Test the range from your sofa.** This is the real risk in the project.
+
+```bash
 python3 scripts/range_test.py
 ```
 
