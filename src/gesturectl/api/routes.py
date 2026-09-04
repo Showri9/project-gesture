@@ -37,6 +37,7 @@ def _device_out(hub: Hub, record) -> DeviceOut:
         name=record.name,
         kind=record.kind,
         needs_pairing=record.needs_pairing,
+        pairing_kind=record.pairing_kind,
         model=record.model,
         is_tv=record.is_tv,
         host=record.host,
@@ -130,7 +131,12 @@ async def pair_start(device_id: str, request: Request) -> dict:
         await record.adapter.start_pairing()
     except Exception as exc:  # noqa: BLE001 - the reason belongs in the UI
         raise HTTPException(502, f"could not start pairing: {exc}") from None
-    return {"ok": True, "message": "Enter the code shown on the TV."}
+    message = (
+        "Accept the prompt on the TV, then tap Confirm."
+        if getattr(record.adapter, "pairing_kind", "code") == "confirm"
+        else "Enter the code shown on the TV."
+    )
+    return {"ok": True, "message": message, "kind": record.kind}
 
 
 @router.post("/devices/{device_id}/pair/finish", response_model=DeviceOut)

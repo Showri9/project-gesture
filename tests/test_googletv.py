@@ -89,7 +89,7 @@ def test_add_a_google_tv(client):
 
 def test_unknown_device_kind_is_rejected(client):
     resp = client.post("/api/devices/by-host",
-                       json={"host": "10.0.0.5", "kind": "firetv"})
+                       json={"host": "10.0.0.5", "kind": "chromecast"})
     assert resp.status_code == 422        # rejected by the schema pattern
 
 

@@ -95,11 +95,12 @@ def _ssdp_sweep(st: str, timeout: float) -> list[str]:
 
 
 _GOOGLETV_SERVICE = "_androidtvremote2._tcp.local."
+_FIRETV_SERVICE = "_amzn-wplay._tcp.local."
 
 
-def googletv_discovery_available() -> bool:
-    """False when the optional extra is not installed. Worth reporting rather
-    than letting an empty result look like an empty network."""
+def mdns_discovery_available() -> bool:
+    """False when zeroconf is not installed. Worth reporting rather than
+    letting an empty result look like an empty network."""
     try:
         import zeroconf  # noqa: F401
     except ImportError:
@@ -115,14 +116,14 @@ def googletv_discovery_available() -> bool:
 _INFO_TIMEOUT_MS = 2000
 
 
-def discover_googletv(timeout: float = 5.0) -> list[str]:
-    """Google TV announces over mDNS, not SSDP, so it needs its own sweep.
+def _mdns_sweep(service: str, timeout: float) -> list[str]:
+    """Browse one mDNS service and return the bare IPv4 addresses answering it.
 
-    Returns bare IPs. Returns nothing rather than raising when zeroconf is not
-    installed - Google TV support is optional, and a missing extra should not
-    break discovery for someone who only owns a Roku.
+    Returns nothing rather than raising when zeroconf is absent: both mDNS
+    device types are optional extras, and a missing one must not break
+    discovery for someone who only owns a Roku.
     """
-    if not googletv_discovery_available():
+    if not mdns_discovery_available():
         return []
     from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 
@@ -148,10 +149,29 @@ def discover_googletv(timeout: float = 5.0) -> list[str]:
 
     zc = Zeroconf()
     try:
-        ServiceBrowser(zc, _GOOGLETV_SERVICE, _Listener())
+        ServiceBrowser(zc, service, _Listener())
         time.sleep(timeout)
     except OSError:
         pass
     finally:
         zc.close()
     return found
+
+
+def discover_googletv(timeout: float = 5.0) -> list[str]:
+    """Google TV and Android TV, via the remote service they advertise."""
+    return _mdns_sweep(_GOOGLETV_SERVICE, timeout)
+
+
+def discover_firetv(timeout: float = 5.0) -> list[str]:
+    """Fire TV, via Amazon's own service record.
+
+    Note this finds the device whether or not ADB is enabled on it - being
+    discoverable and being controllable are separate things here, and the
+    adapter reports the difference rather than discovery hiding it.
+    """
+    return _mdns_sweep(_FIRETV_SERVICE, timeout)
+
+
+#: kept for callers that only care about the Google TV case
+googletv_discovery_available = mdns_discovery_available

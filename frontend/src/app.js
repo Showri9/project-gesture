@@ -185,7 +185,7 @@ async function loadDevices() {
     const li = document.createElement("li");
     li.className = device.selected ? "on" : "";
     const shape = device.is_tv ? "TV" : "stick — no volume or power keys";
-    const tag = device.kind === "googletv" ? "Google TV" : "Roku";
+    const tag = { googletv: "Google TV", firetv: "Fire TV" }[device.kind] ?? "Roku";
     li.innerHTML = `
       <span>
         <span class="name">${device.name}</span><span class="tag">${tag}</span>
@@ -211,12 +211,15 @@ async function loadDevices() {
  * look or people stare at the phone waiting for a code.
  */
 function pairingForm(device) {
+  // Fire TV has no code to type - the fingerprint prompt on the television is
+  // the whole step - so the field is hidden and only the wording differs.
+  const needsCode = device.pairing_kind !== "confirm";
   const wrap = document.createElement("form");
   wrap.className = "pairing";
   wrap.innerHTML = `
     <input name="code" inputmode="numeric" autocomplete="off"
-           placeholder="code from TV" maxlength="8" disabled>
-    <button type="button" class="primary">Pair</button>`;
+           placeholder="code from TV" maxlength="8" disabled ${needsCode ? "" : "hidden"}>
+    <button type="button" class="primary">${needsCode ? "Pair" : "Authorise"}</button>`;
   const input = wrap.querySelector("input");
   const button = wrap.querySelector("button");
   const note = document.createElement("span");
@@ -231,20 +234,19 @@ function pairingForm(device) {
     if (button.textContent === "Pair") {
       button.disabled = true;
       try {
-        await api.pairStart(device.id);
-        input.disabled = false;
-        input.focus();
+        const started = await api.pairStart(device.id);
         button.textContent = "Confirm";
-        note.textContent = "Look at the TV — type the six digits it is showing.";
+        note.textContent = started.message ?? "Look at the TV.";
         wrap.append(note);
+        if (needsCode) { input.disabled = false; input.focus(); }
       } catch (error) { fail(error); }
       finally { button.disabled = false; }
       return;
     }
-    if (!input.value.trim()) return;
+    if (needsCode && !input.value.trim()) return;
     button.disabled = true;
     try {
-      await api.pairFinish(device.id, input.value.trim());
+      await api.pairFinish(device.id, needsCode ? input.value.trim() : "");
       loadDevices();
     } catch (error) {
       fail(error);

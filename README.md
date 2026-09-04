@@ -211,7 +211,7 @@ product could have is a bug in `session.py`, and all of it is deterministic.
 |---|---|---|
 | Roku / Roku TV | ECP, HTTP :8060 | implemented |
 | Google TV / Android TV | Remote v2, TLS :6466 | implemented — needs pairing |
-| Fire TV | ADB, TCP :5555 (`adb-shell`) | next |
+| Fire TV | ADB, TCP :5555 | implemented — needs authorising |
 
 Google TV needs the optional extra and a one-time pairing:
 
@@ -232,6 +232,32 @@ multicast, or simply the extra not installed.
 Add it on the Devices screen — pick **Google TV**, enter its IP, then **Pair**.
 The TV puts a six-digit code on screen; type that back. The certificate it
 issues is kept in `certs/`, so it is asked for once and not again.
+
+### Fire TV
+
+```bash
+pip install -e ".[firetv]"
+```
+
+On the stick, first: **Settings → My Fire TV → About**, click the device name
+seven times to reveal Developer Options, then **Settings → My Fire TV →
+Developer Options → ADB Debugging** on.
+
+Then add it on the Devices screen and tap **Authorise**. A fingerprint prompt
+appears on the television — accept it, tick *always allow from this computer*,
+and tap **Confirm**. There is no code to type; that is Google TV's flow, not
+this one.
+
+Fire OS is Android but ships none of Google's remote service, so ADB is the
+only route Amazon offers. It is a worse deal than the Google TV path — it means
+leaving developer debugging switched on — and it is that or nothing.
+
+**Volume is the one to watch.** Fire TV normally hands audio to the television
+over HDMI-CEC, so a volume key can be accepted by the stick and change nothing
+you can hear. The app says so on the result rather than showing a silent
+success. If that happens, bind volume to the TV instead.
+
+### Why the Google TV path avoids ADB
 
 Android TV Remote v2 is used rather than ADB deliberately. ADB works, but it
 means leaving developer-mode debugging permanently switched on in a television

@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from ..config import AppConfig, DeviceConfig
 from ..devices.base import DeviceAdapter
 from ..devices.discover import (
+    discover_firetv,
     discover_googletv,
     discover_roku,
-    googletv_discovery_available,
+    mdns_discovery_available,
 )
 from ..intents import SESSION_ONLY, Intent, IntentMessage, Source
 from ..session import SessionMachine
@@ -51,9 +52,12 @@ class DeviceRecord:
     is_tv: bool = False
     reachable: bool = False
     power: str = "unknown"
-    #: Google TV answers but refuses commands until a code is entered. That is a
-    #: normal state with a normal remedy, not a broken device.
+    #: Google TV and Fire TV both answer but refuse commands until somebody
+    #: walks over: a normal state with a normal remedy, not a broken device.
     needs_pairing: bool = False
+    #: "code" (Google TV shows six digits) or "confirm" (Fire TV shows a prompt
+    #: to accept). Different words are needed, so the interface has to know.
+    pairing_kind: str = "code"
 
 
 def _default_adapter(name: str, host: str, kind: str = "roku") -> DeviceAdapter:
@@ -61,14 +65,15 @@ def _default_adapter(name: str, host: str, kind: str = "roku") -> DeviceAdapter:
         from ..devices.googletv import GoogleTVAdapter
 
         return GoogleTVAdapter(name, host)
+    if kind == "firetv":
+        from ..devices.firetv import FireTVAdapter
+
+        return FireTVAdapter(name, host)
     if kind == "roku":
         from ..devices.roku import RokuAdapter
 
         return RokuAdapter(name, host)
-    raise ValueError(
-        f"unknown device type {kind!r}. Known: roku, googletv. "
-        "Fire TV is not implemented yet."
-    )
+    raise ValueError(f"unknown device type {kind!r}. Known: roku, googletv, firetv.")
 
 
 class Hub:
@@ -183,6 +188,7 @@ class Hub:
             record.model = getattr(record.adapter, "model", "unknown")
             record.is_tv = getattr(record.adapter, "is_tv", False)
             record.needs_pairing = getattr(record.adapter, "needs_pairing", False)
+            record.pairing_kind = getattr(record.adapter, "pairing_kind", "code")
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI, not swallowed
             record.reachable = False
             log.info("device %s unreachable: %s", record.id, exc)
@@ -190,27 +196,31 @@ class Hub:
             "device_status", id=record.id, reachable=record.reachable,
             model=record.model, is_tv=record.is_tv,
             needs_pairing=record.needs_pairing,
+            pairing_kind=record.pairing_kind,
         )
 
     async def discover(self) -> list[DeviceRecord]:
-        """Two protocols, two sweeps: Roku answers SSDP, Google TV answers mDNS.
+        """Three protocols, three sweeps: Roku answers SSDP, Google TV and Fire TV
+        answer different mDNS services.
 
-        Run together rather than one after the other - both are fixed-duration
-        listens, so doing them in sequence would double the wait for no reason.
-        Both are blocking, hence the threads.
+        Run together rather than one after another - each is a fixed-duration
+        listen, so in sequence they would triple the wait for no reason. All
+        are blocking, hence the threads.
         """
         self.events.publish("discovery", scanning=True, found=[])
-        roku_hosts, google_hosts = await asyncio.gather(
+        roku_hosts, google_hosts, fire_hosts = await asyncio.gather(
             asyncio.to_thread(discover_roku),
             asyncio.to_thread(discover_googletv),
+            asyncio.to_thread(discover_firetv),
         )
         found = [self.add_device(host, kind="roku") for host in roku_hosts]
         found += [self.add_device(host, kind="googletv") for host in google_hosts]
+        found += [self.add_device(host, kind="firetv") for host in fire_hosts]
         for record in found:
             await self.refresh(record)
         self.events.publish(
             "discovery", scanning=False, found=[r.id for r in found],
-            googletv_available=googletv_discovery_available(),
+            mdns_available=mdns_discovery_available(),
         )
         return found
 
