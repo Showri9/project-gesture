@@ -29,9 +29,14 @@ import re
 
 import httpx
 
+from pathlib import Path
+
 from ..intents import Intent
 from .base import DeviceAdapter, Health, Result
 from .discover import discover_roku
+
+#: written by scripts/check_roku.py; SSDP is lossy, the TV rarely moves
+_HOST_CACHE = Path(__file__).resolve().parents[3] / ".roku_host"
 
 #: Intents that map to a single keypress on any Roku.
 _BASE_KEYS: dict[Intent, str] = {
@@ -69,6 +74,14 @@ class RokuAdapter(DeviceAdapter):
         )
 
     @staticmethod
+    def _cached_host() -> str | None:
+        try:
+            value = _HOST_CACHE.read_text().strip()
+            return value or None
+        except OSError:
+            return None
+
+    @staticmethod
     def _normalize(host: str) -> str:
         host = host.strip().rstrip("/")
         if not host.startswith("http"):
@@ -80,12 +93,17 @@ class RokuAdapter(DeviceAdapter):
     async def connect(self) -> None:
         if self.base_url is None:
             candidates = discover_roku()
-            if not candidates:
-                raise RuntimeError(
-                    "No Roku found via SSDP. Set devices[].host in config.yaml, or "
-                    "check that this machine is on the same subnet as the TV."
-                )
-            self.base_url = candidates[0]
+            if candidates:
+                self.base_url = candidates[0]
+            else:
+                # multicast is lossy; a TV found once is almost always still there
+                cached = self._cached_host()
+                if cached is None:
+                    raise RuntimeError(
+                        "No Roku found. Run scripts/check_roku.py to discover one, "
+                        "or set devices[].host in config.yaml."
+                    )
+                self.base_url = cached
 
         info = await self._client.get(f"{self.base_url}/query/device-info")
         info.raise_for_status()

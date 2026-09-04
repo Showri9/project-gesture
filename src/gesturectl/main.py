@@ -123,6 +123,13 @@ def main() -> int:
     dispatcher.start()
     log.info("%s", dispatcher.status_line)
 
+    print()
+    print("  Open palm, held ~1s  ->  wake        Fist          ->  sleep")
+    print("  Thumb up / down      ->  volume      Victory       ->  mute")
+    print("  Point up             ->  play/pause  I-love-you    ->  power (asks twice)")
+    print("  q or Esc to quit")
+    print()
+
     camera = Camera(cfg.vision.camera_index, cfg.vision.width, cfg.vision.height)
     import cv2
 
