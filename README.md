@@ -134,6 +134,44 @@ sofa. The dials that matter, in the order you will reach for them:
 `confirm_frames` (the global default — raise for fewer false fires, lower for
 less lag), `cooldown_ms`, and `repeat_ms`.
 
+## Run it as a service
+
+The phone-as-sensor path. The backend keeps the session machine and the device
+adapters; the phone only sends the pose it sees.
+
+```bash
+python3 -m gesturectl.server                 # http://localhost:8000
+python3 -m gesturectl.server --host 0.0.0.0  # reachable from the phone
+```
+
+Drive it with no camera at all — the on-screen remote and a gesture travel the
+identical path, so this is also how you test the TV:
+
+```bash
+curl -s localhost:8000/api/health
+curl -s -X POST localhost:8000/api/discover
+curl -s -X POST localhost:8000/api/intent -H 'content-type: application/json' \
+     -d '{"intent":"VOLUME_UP"}'
+```
+
+### The phone needs HTTPS
+
+`getUserMedia` refuses to hand a camera to an insecure page, and there is no
+exception for private network addresses. The Roku, meanwhile, speaks only plain
+HTTP — which is exactly why the backend sits in the middle: an HTTPS page cannot
+call plain HTTP, but a server can.
+
+```bash
+brew install mkcert && mkcert -install
+mkcert -cert-file certs/cert.pem -key-file certs/key.pem <your-lan-ip>
+python3 -m gesturectl.server --host 0.0.0.0 --cert certs/cert.pem --key certs/key.pem
+```
+
+Install mkcert's CA on the phone once (iOS: install the profile, then enable
+full trust under *General → About → Certificate Trust Settings*). Don't reach
+for a tunnel like ngrok — it would route your living room through the public
+internet to reach a device three metres away.
+
 ## How it's put together
 
 ```
