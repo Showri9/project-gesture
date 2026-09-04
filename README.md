@@ -85,10 +85,23 @@ sleep, and so does ten seconds with no hand in frame.
 | Pose | Does |
 |---|---|
 | Victory | **wake / sleep** — hold to wake, release, show again to sleep |
+| Open palm | power **on** — hold 3s |
+| "I love you" | power **off** — hold 3s |
 | Thumb up / down | volume, ramping while held |
 | Fist | mute |
 | Point up | play / pause |
-| Open palm | power on / off — holds ~3× longer than anything else |
+
+Hold times are per gesture, in `config.yaml`:
+
+```yaml
+Thumb_Up:   VOLUME_UP                              # uses session.confirm_frames
+Open_Palm:  {intent: POWER_ON, hold_ms: 3000}      # must be held 3 seconds
+```
+
+`hold_ms` is milliseconds rather than a frame count, because 8 frames is 270ms
+on a 30fps camera and 530ms on a 15fps one — a frame count quietly means
+different things on different hardware. Put a hold on anything that fires by
+accident.
 
 Nothing but the wake gesture does anything until you wake it. That single gate
 is what stops the TV reacting to you scratching your nose.

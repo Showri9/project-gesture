@@ -20,26 +20,32 @@ session:
   wake_grace_ms: 1000       # ignore the sleep gesture this long after waking
 
 bindings:
+  # Two forms:
+  #   Pose: INTENT                              - uses session.confirm_frames
+  #   Pose: {intent: INTENT, hold_ms: 3000}     - must be held this long
+  #
+  # hold_ms is in milliseconds and beats a frame count, because 8 frames is
+  # 270ms on a 30fps camera and 530ms on a 15fps one. Put it on anything that
+  # feels too easy to trigger by accident.
+
   # Victory toggles the session: wake when idle, sleep when armed. Safe on one
   # gesture because a pose that has acted stays inert until you release it.
   Victory:      SESSION_TOGGLE
 
-  # Power on and off are separate gestures, so you never have to know what
-  # state the TV is in. They also carry different risk, and therefore different
-  # friction: switching on by accident is a shrug and fires at the normal speed,
-  # while switching off mid-film is the one that gets software deleted, so it
-  # sits on a deliberate, unlikely pose and holds ~3x longer
-  # (session.power_confirm_frames).
-  Open_Palm:    POWER_ON
-  ILoveYou:     POWER_OFF
+  # Power on and off are separate gestures, so you never have to know what state
+  # the TV is in. Both are held for 3 seconds: long enough that neither happens
+  # by accident while you are reaching for the remote or stretching.
+  Open_Palm:    {intent: POWER_ON,  hold_ms: 3000}
+  ILoveYou:     {intent: POWER_OFF, hold_ms: 3000}
 
   Thumb_Up:     VOLUME_UP
   Thumb_Down:   VOLUME_DOWN
-  Closed_Fist:  MUTE_TOGGLE
   Pointing_Up:  PLAY_PAUSE
 
-  # ILoveYou is free. Available poses are exactly these seven until custom
-  # gestures are trained with MediaPipe Model Maker.
+  # Mute is quick on purpose - it is the gesture you want mid-sentence, and
+  # getting it wrong costs one more gesture to undo. If it fires by accident,
+  # give it a hold too:  Closed_Fist: {intent: MUTE_TOGGLE, hold_ms: 1000}
+  Closed_Fist:  MUTE_TOGGLE
 
 devices:
   - name: living-room

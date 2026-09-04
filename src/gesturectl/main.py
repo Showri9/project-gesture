@@ -154,7 +154,9 @@ def main() -> int:
         cfg.vision.min_detection_confidence,
         cfg.vision.min_tracking_confidence,
     )
-    machine = SessionMachine(cfg.session, cfg.bindings, target=device_cfg.name)
+    machine = SessionMachine(
+        cfg.session, cfg.bindings, target=device_cfg.name, hold_ms=cfg.hold_ms
+    )
     dispatcher = Dispatcher(build_adapter(device_cfg), dry_run=args.dry_run)
     dispatcher.start()
     log.info("%s", dispatcher.status_line)

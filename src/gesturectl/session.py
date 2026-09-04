@@ -77,10 +77,16 @@ class SessionMachine:
         config: SessionConfig | None = None,
         bindings: dict[str, Intent] | None = None,
         target: str = "default",
+        hold_ms: dict[Intent, float] | None = None,
     ) -> None:
         self.config = config or SessionConfig()
         self.bindings = bindings or {}
         self.target = target
+        #: per-intent hold time in milliseconds, overriding the frame counter.
+        #: Time beats frames: 8 frames is 270ms on a 30fps camera and 530ms on a
+        #: 15fps one, so a frame count silently means different things on
+        #: different hardware. A millisecond is a millisecond everywhere.
+        self.hold_ms = hold_ms or {}
 
         self._state = State.IDLE
         self._wake_started_ms: float | None = None
@@ -90,6 +96,7 @@ class SessionMachine:
 
         self._candidate: Intent | None = None
         self._candidate_pose: str | None = None
+        self._candidate_started_ms: float = 0.0
         self._frames = 0
 
         self._repeating: Intent | None = None
@@ -114,9 +121,22 @@ class SessionMachine:
             return max(self.config.power_confirm_frames, 1)
         return max(self.config.confirm_frames, 1)
 
+    def _hold_satisfied(self, intent: Intent, now_ms: float) -> bool:
+        override = self.hold_ms.get(intent)
+        if override is not None:
+            return now_ms - self._candidate_started_ms >= override
+        return self._frames >= self._frames_needed(intent)
+
+    def _hold_progress(self, now_ms: float) -> float:
+        if self._candidate is None:
+            return 0.0
+        override = self.hold_ms.get(self._candidate)
+        if override is not None and override > 0:
+            return min(1.0, (now_ms - self._candidate_started_ms) / override)
+        return min(1.0, self._frames / self._frames_needed(self._candidate))
+
     def status(self, now_ms: float = 0.0) -> Status:
-        needed = self._frames_needed(self._candidate) if self._candidate else 1
-        progress = min(1.0, self._frames / needed)
+        progress = self._hold_progress(now_ms)
         return Status(
             state=self._state,
             candidate=self._candidate,
@@ -228,12 +248,13 @@ class SessionMachine:
         if intent is not self._candidate:
             self._candidate = intent
             self._candidate_pose = pose
+            self._candidate_started_ms = now_ms
             self._frames = 1
             self._state = State.CONFIRMING
             return None
 
         self._frames += 1
-        if self._frames < self._frames_needed(intent):
+        if not self._hold_satisfied(intent, now_ms):
             return None
 
         # counter satisfied - but the cooldown may still block it

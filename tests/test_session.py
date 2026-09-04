@@ -346,3 +346,56 @@ def test_holding_power_on_does_not_fire_twice(powered):
     t = _awake(powered)
     msgs, _ = feed(powered, "Open_Palm", 60, start_ms=t)
     assert len(msgs) == 1
+
+
+# -- per-gesture hold times --------------------------------------------------
+
+def test_hold_ms_overrides_the_frame_counter():
+    """A 3s hold must not fire at 1s, however many frames that was."""
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600, repeat_ms=60,
+        idle_timeout_ms=30_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000,
+    )
+    m = SessionMachine(
+        cfg, POWER_BINDINGS, target="tv", hold_ms={Intent.POWER_ON: 3_000.0}
+    )
+    t = _awake(m)
+    early, t2 = feed(m, "Open_Palm", 30, start_ms=t)      # ~1s
+    assert early == [], "1s must not satisfy a 3s hold"
+    late, _ = feed(m, "Open_Palm", 70, start_ms=t2)       # ~2.3s more
+    assert [msg.intent for _, msg in late] == [Intent.POWER_ON]
+
+
+def test_hold_ms_is_time_not_frames():
+    """The same gesture at half the frame rate must take the same wall time."""
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600, repeat_ms=60,
+        idle_timeout_ms=30_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000,
+    )
+    fired_at = {}
+    for fps, step in (("30fps", 33.0), ("15fps", 66.0)):
+        m = SessionMachine(
+            cfg, POWER_BINDINGS, target="tv", hold_ms={Intent.POWER_ON: 3_000.0}
+        )
+        t = _awake(m)
+        msgs, _ = feed(m, "Open_Palm", 120, start_ms=t, step=step)
+        assert msgs, f"never fired at {fps}"
+        fired_at[fps] = msgs[0][0] - t
+    assert abs(fired_at["30fps"] - fired_at["15fps"]) < 100.0
+
+
+def test_progress_reflects_the_hold_not_the_frames():
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600, repeat_ms=60,
+        idle_timeout_ms=30_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000,
+    )
+    m = SessionMachine(
+        cfg, POWER_BINDINGS, target="tv", hold_ms={Intent.POWER_ON: 3_000.0}
+    )
+    t = _awake(m)
+    _, t2 = feed(m, "Open_Palm", 45, start_ms=t)          # ~1.5s of 3s
+    progress = m.status(t2).progress
+    assert 0.3 < progress < 0.75, progress
