@@ -168,3 +168,31 @@ def test_both_tvs_coexist_and_intents_go_to_the_selected_one(client):
     client.post(f"/api/devices/{google['id']}/select")
     client.post("/api/intent", json={"intent": "MUTE_TOGGLE"})
     assert adapter_for(client, google["id"]).sent == [Intent.MUTE_TOGGLE]
+
+
+# -- discovery ---------------------------------------------------------------
+
+def test_scan_looks_for_both_protocols(client, monkeypatch):
+    """The regression this was written for: the scan route had its own
+    Roku-only copy of discovery, so a Google TV could never be found by
+    pressing Scan - only by typing its IP."""
+    import gesturectl.api.hub as hub_module
+
+    monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
+    monkeypatch.setattr(hub_module, "discover_googletv", lambda: ["10.0.0.6"])
+
+    found = client.post("/api/discover").json()
+    kinds = {d["kind"] for d in found}
+    assert kinds == {"roku", "googletv"}, found
+
+
+def test_scan_survives_zeroconf_being_absent(client, monkeypatch):
+    """Google TV support is an optional extra. Someone who only owns a Roku
+    must still be able to scan."""
+    import gesturectl.api.hub as hub_module
+
+    monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
+    monkeypatch.setattr(hub_module, "discover_googletv", lambda: [])
+
+    found = client.post("/api/discover").json()
+    assert [d["kind"] for d in found] == ["roku"]

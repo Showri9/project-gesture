@@ -65,17 +65,11 @@ async def list_devices(request: Request) -> list[DeviceOut]:
 
 @router.post("/discover", response_model=list[DeviceOut])
 async def discover(request: Request) -> list[DeviceOut]:
-    """SSDP is blocking and lossy, so it runs in a thread and the UI is told it
-    is scanning rather than left looking frozen."""
+    """Sweeps for both kinds. The hub does the work; this used to duplicate a
+    Roku-only version of it and silently never looked for a Google TV."""
     hub = get_hub(request)
-    found = await asyncio.to_thread(_discover_sync, hub)
+    found = await hub.discover()
     return [_device_out(hub, r) for r in found]
-
-
-def _discover_sync(hub: Hub):
-    from ..devices.discover import discover_roku
-
-    return [hub.add_device(host) for host in discover_roku()]
 
 
 @router.post("/devices/by-host", response_model=DeviceOut)

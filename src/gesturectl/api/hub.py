@@ -8,6 +8,7 @@ against it; this file only feeds it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -188,15 +189,22 @@ class Hub:
         )
 
     async def discover(self) -> list[DeviceRecord]:
-        """Two protocols, two sweeps: Roku answers SSDP, Google TV answers mDNS."""
+        """Two protocols, two sweeps: Roku answers SSDP, Google TV answers mDNS.
+
+        Run together rather than one after the other - both are fixed-duration
+        listens, so doing them in sequence would double the wait for no reason.
+        Both are blocking, hence the threads.
+        """
         self.events.publish("discovery", scanning=True, found=[])
-        found = [self.add_device(host, kind="roku") for host in discover_roku()]
-        found += [self.add_device(host, kind="googletv") for host in discover_googletv()]
+        roku_hosts, google_hosts = await asyncio.gather(
+            asyncio.to_thread(discover_roku),
+            asyncio.to_thread(discover_googletv),
+        )
+        found = [self.add_device(host, kind="roku") for host in roku_hosts]
+        found += [self.add_device(host, kind="googletv") for host in google_hosts]
         for record in found:
             await self.refresh(record)
-        self.events.publish(
-            "discovery", scanning=False, found=[r.id for r in found]
-        )
+        self.events.publish("discovery", scanning=False, found=[r.id for r in found])
         return found
 
     # -- dispatch -----------------------------------------------------------
