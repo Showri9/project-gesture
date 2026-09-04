@@ -196,3 +196,20 @@ def test_scan_survives_zeroconf_being_absent(client, monkeypatch):
 
     found = client.post("/api/discover").json()
     assert [d["kind"] for d in found] == ["roku"]
+
+
+def test_service_lookup_cannot_outlast_the_browse_window():
+    """The bug this guards: get_service_info ran with the same timeout as the
+    whole sweep. It blocks the browser's callback thread, so a TV that answered
+    could still be resolving when the window closed - and discovery returned
+    nothing from a network where the TV was advertising fine."""
+    from gesturectl.devices import discover
+
+    assert discover._INFO_TIMEOUT_MS / 1000.0 < 5.0, "must fit inside the default window"
+    import inspect
+
+    signature = inspect.signature(discover.discover_googletv)
+    window = signature.parameters["timeout"].default
+    assert discover._INFO_TIMEOUT_MS / 1000.0 <= window / 2, (
+        "a single lookup must not be able to eat more than half the sweep"
+    )

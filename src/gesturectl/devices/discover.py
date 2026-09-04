@@ -66,7 +66,15 @@ def googletv_discovery_available() -> bool:
     return True
 
 
-def discover_googletv(timeout: float = 4.0) -> list[str]:
+#: How long to wait for one service record to come back. This MUST be well
+#: under the browse window: get_service_info blocks the browser's own callback
+#: thread, so if it can run as long as the window itself, the sweep can end
+#: while the only answer it got is still being resolved - and return nothing at
+#: all from a network where the TV was advertising perfectly well.
+_INFO_TIMEOUT_MS = 2000
+
+
+def discover_googletv(timeout: float = 5.0) -> list[str]:
     """Google TV announces over mDNS, not SSDP, so it needs its own sweep.
 
     Returns bare IPs. Returns nothing rather than raising when zeroconf is not
@@ -81,7 +89,7 @@ def discover_googletv(timeout: float = 4.0) -> list[str]:
 
     class _Listener(ServiceListener):
         def _record(self, zc, type_, name) -> None:
-            info = zc.get_service_info(type_, name, timeout=int(timeout * 1000))
+            info = zc.get_service_info(type_, name, timeout=_INFO_TIMEOUT_MS)
             if info is None:
                 return
             for address in info.parsed_addresses():
