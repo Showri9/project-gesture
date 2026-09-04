@@ -40,12 +40,32 @@ def main() -> int:
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
 
+    shown = lan_address() if args.host == "0.0.0.0" else args.host
+
+    if args.cert or args.key:
+        missing = [str(p) for p in (args.cert, args.key) if p is None or not p.exists()]
+        if missing:
+            print("\nCertificate not found:", ", ".join(missing))
+            print("\nGenerate one for this machine, trusted locally:\n")
+            print("  brew install mkcert")
+            print("  mkcert -install")
+            names = list(dict.fromkeys([shown, "localhost", "127.0.0.1"]))
+            print("  mkcert -cert-file certs/cert.pem -key-file certs/key.pem \\")
+            print(f"         {' '.join(names)}")
+            print("\nThen install mkcert's CA on the phone once - AirDrop yourself")
+            print("  ~/Library/Application Support/mkcert/rootCA.pem")
+            print("and enable it under Settings > General > About >")
+            print("Certificate Trust Settings.")
+            print("\nOr drop --cert/--key and use http://localhost:8000 on this")
+            print("machine - localhost is a secure context, so the camera works")
+            print("there with no certificate at all.\n")
+            return 2
+
     import uvicorn
 
     from .api import create_app
 
     scheme = "https" if args.cert else "http"
-    shown = lan_address() if args.host == "0.0.0.0" else args.host
     print(f"\n  API      {scheme}://{shown}:{args.port}/api/health")
     print(f"  Phone    {scheme}://{shown}:{args.port}/")
     if scheme == "http" and args.host != "127.0.0.1":
