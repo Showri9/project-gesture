@@ -1,0 +1,41 @@
+# Tuning lives here, not in the source, so you can adjust it from the sofa.
+
+vision:
+  camera_index: 0
+  width: 640            # higher resolution buys nothing for landmark detection
+  height: 480
+  target_fps: 30
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  model_path: models/gesture_recognizer.task   # see scripts/fetch_model.sh
+
+session:
+  wake_hold_ms: 800     # how long Open_Palm must be held to arm
+  confirm_frames: 8     # ~270ms at 30fps. Raise if false fires, lower if sluggish.
+  cooldown_ms: 600      # gap before the same intent can fire again
+  repeat_ms: 60         # ramp speed while a repeatable pose is held
+  idle_timeout_ms: 10000  # no hand for this long -> disarm
+  min_confidence: 0.65
+
+bindings:
+  Open_Palm:    SESSION_WAKE
+  Closed_Fist:  SESSION_SLEEP
+  Thumb_Up:     VOLUME_UP
+  Thumb_Down:   VOLUME_DOWN
+  Victory:      MUTE_TOGGLE
+  Pointing_Up:  PLAY_PAUSE
+  ILoveYou:     POWER_TOGGLE
+
+devices:
+  - name: living-room
+    type: roku
+    host: null          # null => autodiscover via SSDP. Run scripts/check_roku.py.
+    default: true
+
+  # - name: firestick
+  #   type: firetv
+  #   host: 192.168.1.42
+
+  # - name: tcl
+  #   type: googletv
+  #   host: 192.168.1.43
