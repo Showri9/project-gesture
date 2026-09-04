@@ -24,10 +24,14 @@ bindings:
   # gesture because a pose that has acted stays inert until you release it.
   Victory:      SESSION_TOGGLE
 
-  # Power also toggles - the adapter reads power-mode and sends PowerOn or
-  # PowerOff accordingly, so the same gesture turns the TV on and off.
-  # It holds ~3x longer than anything else (session.power_confirm_frames).
-  Open_Palm:    POWER_TOGGLE
+  # Power on and off are separate gestures, so you never have to know what
+  # state the TV is in. They also carry different risk, and therefore different
+  # friction: switching on by accident is a shrug and fires at the normal speed,
+  # while switching off mid-film is the one that gets software deleted, so it
+  # sits on a deliberate, unlikely pose and holds ~3x longer
+  # (session.power_confirm_frames).
+  Open_Palm:    POWER_ON
+  ILoveYou:     POWER_OFF
 
   Thumb_Up:     VOLUME_UP
   Thumb_Down:   VOLUME_DOWN

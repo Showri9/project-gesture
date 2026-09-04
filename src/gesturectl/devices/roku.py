@@ -117,11 +117,17 @@ class RokuAdapter(DeviceAdapter):
         self.capabilities = set(_BASE_KEYS)
         if self.is_tv:
             self.capabilities |= set(_TV_KEYS)
-            self.capabilities.add(Intent.POWER_TOGGLE)
+            self.capabilities |= {
+                Intent.POWER_ON, Intent.POWER_OFF, Intent.POWER_TOGGLE
+            }
 
     async def send(self, intent: Intent) -> Result:
         if self.base_url is None:
             return Result(False, "not connected")
+        if intent is Intent.POWER_ON:
+            return await self._power_on()
+        if intent is Intent.POWER_OFF:
+            return await self._keypress("PowerOff")
         if intent is Intent.POWER_TOGGLE:
             return await self._power_toggle()
 
@@ -155,9 +161,21 @@ class RokuAdapter(DeviceAdapter):
             return Result(False, f"HTTP {resp.status_code}")
         return Result(True, key)
 
-    async def _power_toggle(self) -> Result:
+    async def _power_on(self) -> Result:
         """PowerOn only reaches a TV that kept its network interface alive, which
-        means Fast TV Start. Without it, off is a one-way trip."""
+        means Fast TV Start. Without it, off is a one-way trip - and the TV
+        answering at all while it is off is the proof that it is enabled."""
+        result = await self._keypress("PowerOn")
+        if not result.ok:
+            return Result(
+                False,
+                "PowerOn failed - enable Fast TV Start under Settings > System > Power",
+            )
+        return result
+
+    async def _power_toggle(self) -> Result:
+        """One gesture for both, for anyone who prefers it: read the power mode
+        and send whichever key the TV is not already in."""
         try:
             info = await self._client.get(f"{self.base_url}/query/device-info")
             mode_match = _POWER_MODE.search(info.text)
@@ -167,13 +185,7 @@ class RokuAdapter(DeviceAdapter):
 
         if mode == "poweron":
             return await self._keypress("PowerOff")
-        result = await self._keypress("PowerOn")
-        if not result.ok:
-            return Result(
-                False,
-                "PowerOn failed - enable Fast TV Start under Settings > System > Power",
-            )
-        return result
+        return await self._power_on()
 
     async def health(self) -> Health:
         if self.base_url is None:

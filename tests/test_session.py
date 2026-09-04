@@ -287,3 +287,62 @@ def test_full_cycle_wake_act_sleep(toggler):
     toggler.update(None, 0.0, t2)
     sleep, _ = feed(toggler, "Victory", 10, start_ms=t2 + 100.0)
     assert [m.intent for _, m in sleep] == [Intent.SESSION_SLEEP]
+
+
+# -- power split across two gestures -----------------------------------------
+
+POWER_BINDINGS = {
+    "Victory": Intent.SESSION_TOGGLE,
+    "Open_Palm": Intent.POWER_ON,
+    "ILoveYou": Intent.POWER_OFF,
+    "Thumb_Up": Intent.VOLUME_UP,
+}
+
+
+@pytest.fixture
+def powered():
+    cfg = SessionConfig(
+        wake_hold_ms=800, confirm_frames=4, cooldown_ms=600,
+        repeat_ms=60, idle_timeout_ms=10_000, min_confidence=0.65,
+        sleep_confirm_frames=4, wake_grace_ms=1_000, power_confirm_frames=15,
+    )
+    return SessionMachine(cfg, POWER_BINDINGS, target="living-room")
+
+
+def _awake(m):
+    _, t = feed(m, "Victory", 30)
+    m.update(None, 0.0, t)
+    return t + 100.0
+
+
+def test_power_on_fires_at_the_normal_speed(powered):
+    """Switching a TV on by accident costs nothing, so it should not feel
+    sluggish - POWER_ON is deliberately outside COSTLY."""
+    t = _awake(powered)
+    msgs, _ = feed(powered, "Open_Palm", 6, start_ms=t)
+    assert [m.intent for _, m in msgs] == [Intent.POWER_ON]
+
+
+def test_power_off_needs_the_long_hold(powered):
+    t = _awake(powered)
+    msgs, _ = feed(powered, "ILoveYou", 6, start_ms=t)
+    assert msgs == [], "6 frames turns the TV on but must not turn it off"
+
+
+def test_power_off_fires_once_held(powered):
+    t = _awake(powered)
+    msgs, _ = feed(powered, "ILoveYou", 20, start_ms=t)
+    assert [m.intent for _, m in msgs] == [Intent.POWER_OFF]
+
+
+def test_power_off_is_harder_than_power_on(powered):
+    """The asymmetry is the point, so assert it rather than trusting config."""
+    on = powered._frames_needed(Intent.POWER_ON)
+    off = powered._frames_needed(Intent.POWER_OFF)
+    assert off > on
+
+
+def test_holding_power_on_does_not_fire_twice(powered):
+    t = _awake(powered)
+    msgs, _ = feed(powered, "Open_Palm", 60, start_ms=t)
+    assert len(msgs) == 1

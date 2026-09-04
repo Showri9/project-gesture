@@ -31,7 +31,7 @@ log = logging.getLogger("gesturectl")
 _LEGEND_ORDER = [
     Intent.SESSION_TOGGLE, Intent.SESSION_WAKE, Intent.SESSION_SLEEP,
     Intent.VOLUME_UP, Intent.VOLUME_DOWN, Intent.MUTE_TOGGLE,
-    Intent.PLAY_PAUSE, Intent.POWER_TOGGLE,
+    Intent.PLAY_PAUSE, Intent.POWER_ON, Intent.POWER_OFF, Intent.POWER_TOGGLE,
 ]
 
 _LEGEND_TEXT = {
@@ -42,7 +42,9 @@ _LEGEND_TEXT = {
     Intent.VOLUME_DOWN: "volume down (ramps while held)",
     Intent.MUTE_TOGGLE: "mute",
     Intent.PLAY_PAUSE: "play / pause",
-    Intent.POWER_TOGGLE: "power on / off (longer hold)",
+    Intent.POWER_ON: "power on",
+    Intent.POWER_OFF: "power off (hold longer)",
+    Intent.POWER_TOGGLE: "power on / off (hold longer)",
 }
 
 

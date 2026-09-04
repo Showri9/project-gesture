@@ -27,6 +27,14 @@ class Intent(str, Enum):
     VOLUME_DOWN = "VOLUME_DOWN"
     MUTE_TOGGLE = "MUTE_TOGGLE"
     PLAY_PAUSE = "PLAY_PAUSE"
+    #: Explicit on and off beat a toggle for power: you never have to know
+    #: what state the TV is in, and the two halves can carry different risk.
+    #: Turning a TV on by accident is a shrug; turning it off mid-film is the
+    #: failure that gets software deleted. So they are separate intents, on
+    #: separate gestures, with separate amounts of friction.
+    POWER_ON = "POWER_ON"
+    POWER_OFF = "POWER_OFF"
+    #: kept for anyone who prefers one gesture for both
     POWER_TOGGLE = "POWER_TOGGLE"
 
     # navigation - phase 1.5, driven by motion rather than static poses
@@ -45,10 +53,18 @@ REPEATABLE: frozenset[Intent] = frozenset(
      Intent.NAV_LEFT, Intent.NAV_RIGHT}
 )
 
-#: Intents costly enough to be worth a second confirmation.
-#: Turning the TV off mid-film is the failure that gets software uninstalled;
-#: nudging the volume is a shrug. Weight the confirmation to the cost of error.
-NEEDS_CONFIRMATION: frozenset[Intent] = frozenset({Intent.POWER_TOGGLE})
+#: Intents costly enough to be worth a second confirmation, when
+#: SessionConfig.double_confirm_power is on.
+NEEDS_CONFIRMATION: frozenset[Intent] = frozenset(
+    {Intent.POWER_OFF, Intent.POWER_TOGGLE}
+)
+
+#: Intents that must be held noticeably longer than the rest. Turning the TV off
+#: mid-film is the failure that gets software uninstalled; nudging the volume is
+#: a shrug. Weight the effort to the cost of error - which is exactly why
+#: POWER_ON is NOT here: switching a TV on by accident costs nothing, so making
+#: it snappy costs nothing either.
+COSTLY: frozenset[Intent] = frozenset({Intent.POWER_OFF, Intent.POWER_TOGGLE})
 
 #: Handled by the session machine itself, never sent to a device.
 SESSION_ONLY: frozenset[Intent] = frozenset(

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .intents import (
+    COSTLY,
     NEEDS_CONFIRMATION,
     REPEATABLE,
     SESSION_ONLY,
@@ -46,10 +47,10 @@ class SessionConfig:
     #: With one gesture toggling wake and sleep this is doubly load-bearing:
     #: without it, the hold that wakes you would immediately put you back down.
     wake_grace_ms: float = 1_000.0
-    #: POWER_TOGGLE is the costliest action, so it gets a longer hold than
-    #: everything else instead of a second confirmation.
+    #: how long the COSTLY intents (power off) must be held. Everything else,
+    #: power ON included, uses confirm_frames.
     power_confirm_frames: int = 15
-    #: require the power gesture twice (drop the pose in between). Off by
+    #: require a costly gesture twice (drop the pose in between). Off by
     #: default: a single deliberate hold reads better than a double-tap.
     double_confirm_power: bool = False
     #: how long the second half of a double-confirm may take
@@ -107,9 +108,9 @@ class SessionMachine:
         return self._state
 
     def _frames_needed(self, intent: Intent) -> int:
-        """Power holds longer than everything else. Weight the effort to the
-        cost of being wrong."""
-        if intent is Intent.POWER_TOGGLE:
+        """Costly intents hold longer. POWER_ON is not one of them - switching a
+        TV on by accident costs nothing, and making it snappy costs nothing."""
+        if intent in COSTLY:
             return max(self.config.power_confirm_frames, 1)
         return max(self.config.confirm_frames, 1)
 
