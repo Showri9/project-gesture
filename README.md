@@ -190,7 +190,6 @@ advertises its real capability set rather than assuming one.
 The full architecture, gesture design rationale, latency budget and risk list are
 in the project blueprint.
 
-
 ## Licence
 
 MIT
