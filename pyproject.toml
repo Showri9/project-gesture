@@ -28,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 firetv = ["adb-shell>=0.4.4"]
-googletv = ["androidtvremote2>=0.1.1"]
+googletv = ["androidtvremote2>=0.2", "zeroconf>=0.130"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]

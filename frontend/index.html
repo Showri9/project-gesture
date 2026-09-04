@@ -67,8 +67,13 @@
     <p class="sub">For routers that drop multicast between wifi bands.</p>
     <form id="by-host" class="row">
       <input name="host" inputmode="decimal" placeholder="192.168.68.84" required>
+      <select name="kind">
+        <option value="roku">Roku</option>
+        <option value="googletv">Google TV</option>
+      </select>
       <button type="submit">Add</button>
     </form>
+    <p class="sub">A Google TV needs pairing once — it shows a code on screen.</p>
   </section>
 
   <section id="settings" hidden>

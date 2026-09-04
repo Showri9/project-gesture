@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from ..config import AppConfig, DeviceConfig
 from ..devices.base import DeviceAdapter
-from ..devices.discover import discover_roku
+from ..devices.discover import discover_googletv, discover_roku
 from ..intents import SESSION_ONLY, Intent, IntentMessage, Source
 from ..session import SessionMachine
 from .events import EventBus
@@ -40,17 +40,30 @@ class DeviceRecord:
     id: str
     host: str
     name: str
+    kind: str = "roku"
     adapter: DeviceAdapter | None = None
     model: str = "unknown"
     is_tv: bool = False
     reachable: bool = False
     power: str = "unknown"
+    #: Google TV answers but refuses commands until a code is entered. That is a
+    #: normal state with a normal remedy, not a broken device.
+    needs_pairing: bool = False
 
 
-def _default_adapter(name: str, host: str) -> DeviceAdapter:
-    from ..devices.roku import RokuAdapter
+def _default_adapter(name: str, host: str, kind: str = "roku") -> DeviceAdapter:
+    if kind == "googletv":
+        from ..devices.googletv import GoogleTVAdapter
 
-    return RokuAdapter(name, host)
+        return GoogleTVAdapter(name, host)
+    if kind == "roku":
+        from ..devices.roku import RokuAdapter
+
+        return RokuAdapter(name, host)
+    raise ValueError(
+        f"unknown device type {kind!r}. Known: roku, googletv. "
+        "Fire TV is not implemented yet."
+    )
 
 
 class Hub:
@@ -68,7 +81,8 @@ class Hub:
 
         for device_cfg in config.devices:
             if device_cfg.host:
-                self.add_device(device_cfg.host, device_cfg.name, select=device_cfg.default)
+                self.add_device(device_cfg.host, device_cfg.name,
+                                select=device_cfg.default, kind=device_cfg.type)
 
     # -- session ------------------------------------------------------------
 
@@ -131,12 +145,13 @@ class Hub:
 
     # -- devices ------------------------------------------------------------
 
-    def add_device(self, host: str, name: str | None = None, select: bool = False) -> DeviceRecord:
+    def add_device(self, host: str, name: str | None = None, select: bool = False,
+                   kind: str = "roku") -> DeviceRecord:
         did = device_id(host)
         record = self.devices.get(did)
         if record is None:
-            record = DeviceRecord(id=did, host=host, name=name or did)
-            record.adapter = self.adapter_factory(record.name, host)
+            record = DeviceRecord(id=did, host=host, name=name or did, kind=kind)
+            record.adapter = self.adapter_factory(record.name, host, kind)
             self.devices[did] = record
         if select or self.selected_id is None:
             self.select(did)
@@ -162,18 +177,21 @@ class Hub:
             record.reachable = health.reachable
             record.model = getattr(record.adapter, "model", "unknown")
             record.is_tv = getattr(record.adapter, "is_tv", False)
+            record.needs_pairing = getattr(record.adapter, "needs_pairing", False)
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI, not swallowed
             record.reachable = False
             log.info("device %s unreachable: %s", record.id, exc)
         self.events.publish(
             "device_status", id=record.id, reachable=record.reachable,
             model=record.model, is_tv=record.is_tv,
+            needs_pairing=record.needs_pairing,
         )
 
     async def discover(self) -> list[DeviceRecord]:
+        """Two protocols, two sweeps: Roku answers SSDP, Google TV answers mDNS."""
         self.events.publish("discovery", scanning=True, found=[])
-        hosts = discover_roku()
-        found = [self.add_device(host) for host in hosts]
+        found = [self.add_device(host, kind="roku") for host in discover_roku()]
+        found += [self.add_device(host, kind="googletv") for host in discover_googletv()]
         for record in found:
             await self.refresh(record)
         self.events.publish(

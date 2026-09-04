@@ -160,7 +160,7 @@ $("by-host").onsubmit = async (e) => {
   e.preventDefault();
   const input = e.target.host;
   if (!input.value.trim()) return;
-  try { await api.addByHost(input.value.trim(), null); input.value = ""; }
+  try { await api.addByHost(input.value.trim(), null, e.target.kind.value); input.value = ""; }
   catch (error) { alert(error.message); }
   loadDevices();
 };
@@ -176,16 +176,77 @@ async function loadDevices() {
   for (const device of state.devices) {
     const li = document.createElement("li");
     li.className = device.selected ? "on" : "";
-    const kind = device.is_tv ? "TV" : "stick — no volume or power keys";
+    const shape = device.is_tv ? "TV" : "stick — no volume or power keys";
+    const tag = device.kind === "googletv" ? "Google TV" : "Roku";
     li.innerHTML = `
       <span>
-        <span class="name">${device.name}</span>
-        <span class="meta">${device.model} · ${device.host} · ${kind}</span>
+        <span class="name">${device.name}</span><span class="tag">${tag}</span>
+        ${device.needs_pairing ? '<span class="tag pair">not paired</span>' : ""}
+        <span class="meta">${device.model} · ${device.host} · ${shape}</span>
       </span>
       <span class="dot ${device.reachable ? "up" : ""}" title="${device.reachable ? "reachable" : "unreachable"}"></span>`;
-    li.onclick = async () => { await api.selectDevice(device.id); loadDevices(); };
+
+    li.onclick = async (e) => {
+      if (e.target.closest(".pairing")) return;      // don't select while pairing
+      await api.selectDevice(device.id);
+      loadDevices();
+    };
+    if (device.needs_pairing) li.append(pairingForm(device));
     list.append(li);
   }
+}
+
+/**
+ * The pairing step, which only Google TV needs. The code appears on the
+ * television, not here — so the button that asks for it and the field that
+ * takes it have to be two separate moments, and the copy has to say where to
+ * look or people stare at the phone waiting for a code.
+ */
+function pairingForm(device) {
+  const wrap = document.createElement("form");
+  wrap.className = "pairing";
+  wrap.innerHTML = `
+    <input name="code" inputmode="numeric" autocomplete="off"
+           placeholder="code from TV" maxlength="8" disabled>
+    <button type="button" class="primary">Pair</button>`;
+  const input = wrap.querySelector("input");
+  const button = wrap.querySelector("button");
+  const note = document.createElement("span");
+  note.className = "pair-note";
+
+  const fail = (error) => {
+    note.textContent = String(error.message ?? error);
+    wrap.append(note);
+  };
+
+  button.onclick = async () => {
+    if (button.textContent === "Pair") {
+      button.disabled = true;
+      try {
+        await api.pairStart(device.id);
+        input.disabled = false;
+        input.focus();
+        button.textContent = "Confirm";
+        note.textContent = "Look at the TV — type the six digits it is showing.";
+        wrap.append(note);
+      } catch (error) { fail(error); }
+      finally { button.disabled = false; }
+      return;
+    }
+    if (!input.value.trim()) return;
+    button.disabled = true;
+    try {
+      await api.pairFinish(device.id, input.value.trim());
+      loadDevices();
+    } catch (error) {
+      fail(error);
+      input.value = "";
+      input.focus();
+    } finally { button.disabled = false; }
+  };
+
+  wrap.onsubmit = (e) => { e.preventDefault(); button.click(); };
+  return wrap;
 }
 
 // -- settings ----------------------------------------------------------------

@@ -116,3 +116,19 @@ input { flex:1; min-width:150px; }
 .thresholds label { display:block; margin-bottom:14px; font-size:14px; }
 .thresholds .k { display:flex; justify-content:space-between; color:var(--muted); margin-bottom:5px; }
 .thresholds input[type=range] { width:100%; padding:0; min-height:0; background:none; border:0; }
+
+/* --- device kinds and pairing --- */
+select {
+  font:inherit; font-size:15px; padding:12px 10px; border-radius:var(--radius);
+  border:1px solid var(--rule); background:var(--surface); color:var(--ink);
+  min-height:46px;
+}
+.devices li { flex-wrap:wrap; }
+.tag {
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:2px 7px;
+  border-radius:999px; border:1px solid var(--rule); color:var(--muted); margin-left:8px;
+}
+.tag.pair { color:var(--warn); border-color:var(--warn); }
+.pairing { flex-basis:100%; display:flex; gap:8px; margin-top:10px; }
+.pairing input { flex:1; letter-spacing:.28em; text-align:center; font-size:19px; }
+.pair-note { flex-basis:100%; color:var(--warn); font-size:13px; margin-top:8px; }

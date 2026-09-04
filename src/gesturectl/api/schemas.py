@@ -16,8 +16,12 @@ class Health(BaseModel):
 class DeviceOut(BaseModel):
     id: str
     name: str
+    kind: str = "roku"
     model: str = "unknown"
     is_tv: bool = False
+    #: Google TV answers but refuses commands until paired. A normal state with
+    #: a normal remedy, so it is a field rather than an error.
+    needs_pairing: bool = False
     host: str
     reachable: bool = False
     power: str = "unknown"          # on | standby | unknown
@@ -28,6 +32,11 @@ class DeviceOut(BaseModel):
 class AddByHost(BaseModel):
     host: str = Field(min_length=3, description="IP or http://ip:8060")
     name: str | None = None
+    kind: str = Field(default="roku", pattern="^(roku|googletv)$")
+
+
+class PairingCode(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
 
 
 class IntentIn(BaseModel):

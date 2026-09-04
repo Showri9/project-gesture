@@ -18,6 +18,7 @@ from .schemas import (
     DeviceOut,
     Health,
     IntentIn,
+    PairingCode,
     PoseIn,
 )
 
@@ -34,6 +35,8 @@ def _device_out(hub: Hub, record) -> DeviceOut:
     return DeviceOut(
         id=record.id,
         name=record.name,
+        kind=record.kind,
+        needs_pairing=record.needs_pairing,
         model=record.model,
         is_tv=record.is_tv,
         host=record.host,
@@ -79,7 +82,10 @@ def _discover_sync(hub: Hub):
 async def add_by_host(body: AddByHost, request: Request) -> DeviceOut:
     """For the routers that drop multicast between wifi bands."""
     hub = get_hub(request)
-    record = hub.add_device(body.host, body.name)
+    try:
+        record = hub.add_device(body.host, body.name, kind=body.kind)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
     await hub.refresh(record)
     return _device_out(hub, record)
 
@@ -102,6 +108,45 @@ async def refresh_device(device_id: str, request: Request) -> DeviceOut:
     record = hub.devices.get(device_id)
     if record is None:
         raise HTTPException(404, f"no device {device_id!r}")
+    await hub.refresh(record)
+    return _device_out(hub, record)
+
+
+# -- pairing ----------------------------------------------------------------
+#
+# Google TV will not take a command until a six-digit code shown on the screen
+# has been typed back. That is two round trips through the UI, so it is two
+# endpoints rather than one.
+
+def _pairable(hub: Hub, device_id: str):
+    record = hub.devices.get(device_id)
+    if record is None:
+        raise HTTPException(404, f"no device {device_id!r}")
+    if not hasattr(record.adapter, "start_pairing"):
+        raise HTTPException(400, f"{record.kind} devices do not need pairing")
+    return record
+
+
+@router.post("/devices/{device_id}/pair/start")
+async def pair_start(device_id: str, request: Request) -> dict:
+    """Asks the TV to put a code on screen."""
+    hub = get_hub(request)
+    record = _pairable(hub, device_id)
+    try:
+        await record.adapter.start_pairing()
+    except Exception as exc:  # noqa: BLE001 - the reason belongs in the UI
+        raise HTTPException(502, f"could not start pairing: {exc}") from None
+    return {"ok": True, "message": "Enter the code shown on the TV."}
+
+
+@router.post("/devices/{device_id}/pair/finish", response_model=DeviceOut)
+async def pair_finish(device_id: str, body: PairingCode, request: Request) -> DeviceOut:
+    hub = get_hub(request)
+    record = _pairable(hub, device_id)
+    try:
+        await record.adapter.finish_pairing(body.code)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc)) from None
     await hub.refresh(record)
     return _device_out(hub, record)
 

@@ -24,8 +24,14 @@ export const listDevices = () => json("/devices");
 export const discover = () => json("/discover", { method: "POST" });
 export const selectDevice = (id) => json(`/devices/${id}/select`, { method: "POST" });
 export const refreshDevice = (id) => json(`/devices/${id}/refresh`, { method: "POST" });
-export const addByHost = (host, name) =>
-  json("/devices/by-host", { method: "POST", body: JSON.stringify({ host, name }) });
+export const addByHost = (host, name, kind = "roku") =>
+  json("/devices/by-host", { method: "POST", body: JSON.stringify({ host, name, kind }) });
+
+// Google TV shows a six-digit code on screen and will not take a command until
+// it has been typed back. Two round trips, so two calls.
+export const pairStart = (id) => json(`/devices/${id}/pair/start`, { method: "POST" });
+export const pairFinish = (id, code) =>
+  json(`/devices/${id}/pair/finish`, { method: "POST", body: JSON.stringify({ code }) });
 export const sendIntent = (intent) =>
   json("/intent", { method: "POST", body: JSON.stringify({ intent }) });
 export const getConfig = () => json("/config");

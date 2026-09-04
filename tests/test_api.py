@@ -20,8 +20,9 @@ from gesturectl.session import SessionConfig
 class FakeRoku(DeviceAdapter):
     """Records what it was asked to do, and can be told to refuse."""
 
-    def __init__(self, name: str, host: str) -> None:
+    def __init__(self, name: str, host: str, kind: str = "roku") -> None:
         super().__init__(name)
+        self.kind = kind
         self.host = host
         self.base_url = host
         self.model = "FakeTV-1"

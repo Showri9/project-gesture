@@ -51,3 +51,49 @@ def discover_roku(timeout: float = 4.0) -> list[str]:
     finally:
         sock.close()
     return found
+
+
+_GOOGLETV_SERVICE = "_androidtvremote2._tcp.local."
+
+
+def discover_googletv(timeout: float = 4.0) -> list[str]:
+    """Google TV announces over mDNS, not SSDP, so it needs its own sweep.
+
+    Returns bare IPs. Returns nothing rather than raising when zeroconf is not
+    installed - Google TV support is optional, and a missing extra should not
+    break discovery for someone who only owns a Roku.
+    """
+    try:
+        from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+    except ImportError:
+        return []
+
+    found: list[str] = []
+
+    class _Listener(ServiceListener):
+        def _record(self, zc, type_, name) -> None:
+            info = zc.get_service_info(type_, name, timeout=int(timeout * 1000))
+            if info is None:
+                return
+            for address in info.parsed_addresses():
+                if ":" not in address and address not in found:   # IPv4 only
+                    found.append(address)
+
+        def add_service(self, zc, type_, name) -> None:
+            self._record(zc, type_, name)
+
+        def update_service(self, zc, type_, name) -> None:
+            self._record(zc, type_, name)
+
+        def remove_service(self, zc, type_, name) -> None:
+            return None
+
+    zc = Zeroconf()
+    try:
+        ServiceBrowser(zc, _GOOGLETV_SERVICE, _Listener())
+        time.sleep(timeout)
+    except OSError:
+        pass
+    finally:
+        zc.close()
+    return found

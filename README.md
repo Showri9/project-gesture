@@ -210,8 +210,23 @@ product could have is a bug in `session.py`, and all of it is deterministic.
 | Device | Protocol | Status |
 |---|---|---|
 | Roku / Roku TV | ECP, HTTP :8060 | implemented |
+| Google TV / Android TV | Remote v2, TLS :6466 | implemented — needs pairing |
 | Fire TV | ADB, TCP :5555 (`adb-shell`) | next |
-| TCL Google TV | Android TV Remote v2, TLS :6466 (`androidtvremote2`) | next |
+
+Google TV needs the optional extra and a one-time pairing:
+
+```bash
+pip install -e ".[googletv]"
+```
+
+Add it on the Devices screen — pick **Google TV**, enter its IP, then **Pair**.
+The TV puts a six-digit code on screen; type that back. The certificate it
+issues is kept in `certs/`, so it is asked for once and not again.
+
+Android TV Remote v2 is used rather than ADB deliberately. ADB works, but it
+means leaving developer-mode debugging permanently switched on in a television
+in the living room. The remote protocol is what the official app speaks, and it
+needs no developer options at all.
 
 Roku volume, mute and power keys exist on Roku **TVs** only, not on sticks and
 boxes, so the adapter reads `is-tv` from `query/device-info` at startup and
