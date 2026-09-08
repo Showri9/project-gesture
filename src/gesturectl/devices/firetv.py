@@ -95,6 +95,11 @@ class FireTVAdapter(DeviceAdapter):
         from adb_shell.adb_device_async import AdbDeviceTcpAsync
         from adb_shell.exceptions import DeviceAuthError, TcpTimeoutException
 
+        if self._device is not None:
+            try:
+                await self._device.close()
+            except Exception:  # noqa: BLE001 - reconnect with a fresh transport
+                log.debug("failed to close stale ADB transport", exc_info=True)
         self._device = AdbDeviceTcpAsync(self.host, self.port,
                                          default_transport_timeout_s=5.0)
         try:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
@@ -143,8 +144,13 @@ async def pair_start(device_id: str, request: Request) -> dict:
 async def pair_finish(device_id: str, body: PairingCode, request: Request) -> DeviceOut:
     hub = get_hub(request)
     record = _pairable(hub, device_id)
+    code = body.code.strip()
+    if getattr(record.adapter, "pairing_kind", "code") == "code" and not re.fullmatch(
+        r"[0-9]{6}", code
+    ):
+        raise HTTPException(422, "Google TV pairing code must be six digits")
     try:
-        await record.adapter.finish_pairing(body.code)
+        await record.adapter.finish_pairing(code)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, str(exc)) from None
     await hub.refresh(record)

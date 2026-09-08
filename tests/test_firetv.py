@@ -9,6 +9,10 @@ person walks over - so the interesting thing to test is that the shared
 
 from __future__ import annotations
 
+import asyncio
+import sys
+from types import ModuleType
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -169,3 +173,55 @@ def test_volume_results_mention_cec():
 
     assert Intent.VOLUME_UP in _VOLUME
     assert "CEC" in _CEC_NOTE
+
+
+def test_reconnect_closes_the_previous_adb_transport(monkeypatch, tmp_path):
+    """Refresh and pairing reconnect; neither may leak the previous socket."""
+    from gesturectl.devices.firetv import FireTVAdapter
+
+    devices = []
+
+    class FakeAdbDevice:
+        def __init__(self, *_args, **_kwargs):
+            self.available = True
+            self.closed = False
+            devices.append(self)
+
+        async def connect(self, **_kwargs):
+            return True
+
+        async def shell(self, _command):
+            return "AFTKA"
+
+        async def close(self):
+            self.closed = True
+
+    class DeviceAuthError(Exception):
+        pass
+
+    class TcpTimeoutException(Exception):
+        pass
+
+    adb_shell = ModuleType("adb_shell")
+    adb_device_async = ModuleType("adb_shell.adb_device_async")
+    exceptions = ModuleType("adb_shell.exceptions")
+    adb_device_async.AdbDeviceTcpAsync = FakeAdbDevice
+    exceptions.DeviceAuthError = DeviceAuthError
+    exceptions.TcpTimeoutException = TcpTimeoutException
+    monkeypatch.setitem(sys.modules, "adb_shell", adb_shell)
+    monkeypatch.setitem(sys.modules, "adb_shell.adb_device_async", adb_device_async)
+    monkeypatch.setitem(sys.modules, "adb_shell.exceptions", exceptions)
+
+    adapter = FireTVAdapter("firestick", "192.168.68.90", key_dir=tmp_path)
+    monkeypatch.setattr(adapter, "_signer", lambda: object())
+
+    async def reconnect():
+        await adapter.connect()
+        first = adapter._device
+        await adapter.connect()
+        return first
+
+    first = asyncio.run(reconnect())
+    assert first.closed is True
+    assert len(devices) == 2
+    assert adapter._device is devices[1]

@@ -64,8 +64,8 @@ function onEvent(event) {
         // An empty scan looks identical whether nothing answered or the
         // optional extra simply is not installed. Say which.
         $("scan-note").textContent =
-          event.googletv_available === false
-            ? "Google TV discovery is off — pip install -e '.[googletv]'"
+          event.mdns_available === false
+            ? "Google TV / Fire TV discovery is off — install the matching optional extra"
             : "";
       }
       break;
@@ -222,6 +222,7 @@ function pairingForm(device) {
     <button type="button" class="primary">${needsCode ? "Pair" : "Authorise"}</button>`;
   const input = wrap.querySelector("input");
   const button = wrap.querySelector("button");
+  let started = false;
   const note = document.createElement("span");
   note.className = "pair-note";
 
@@ -231,12 +232,13 @@ function pairingForm(device) {
   };
 
   button.onclick = async () => {
-    if (button.textContent === "Pair") {
+    if (!started) {
       button.disabled = true;
       try {
-        const started = await api.pairStart(device.id);
+        const response = await api.pairStart(device.id);
+        started = true;
         button.textContent = "Confirm";
-        note.textContent = started.message ?? "Look at the TV.";
+        note.textContent = response.message ?? "Look at the TV.";
         wrap.append(note);
         if (needsCode) { input.disabled = false; input.focus(); }
       } catch (error) { fail(error); }
