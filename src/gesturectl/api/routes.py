@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
@@ -37,6 +38,7 @@ def _device_out(hub: Hub, record) -> DeviceOut:
         name=record.name,
         kind=record.kind,
         needs_pairing=record.needs_pairing,
+        pairing_kind=record.pairing_kind,
         model=record.model,
         is_tv=record.is_tv,
         host=record.host,
@@ -130,15 +132,25 @@ async def pair_start(device_id: str, request: Request) -> dict:
         await record.adapter.start_pairing()
     except Exception as exc:  # noqa: BLE001 - the reason belongs in the UI
         raise HTTPException(502, f"could not start pairing: {exc}") from None
-    return {"ok": True, "message": "Enter the code shown on the TV."}
+    message = (
+        "Accept the prompt on the TV, then tap Confirm."
+        if getattr(record.adapter, "pairing_kind", "code") == "confirm"
+        else "Enter the code shown on the TV."
+    )
+    return {"ok": True, "message": message, "kind": record.kind}
 
 
 @router.post("/devices/{device_id}/pair/finish", response_model=DeviceOut)
 async def pair_finish(device_id: str, body: PairingCode, request: Request) -> DeviceOut:
     hub = get_hub(request)
     record = _pairable(hub, device_id)
+    code = body.code.strip()
+    if getattr(record.adapter, "pairing_kind", "code") == "code" and not re.fullmatch(
+        r"[0-9]{6}", code
+    ):
+        raise HTTPException(422, "Google TV pairing code must be six digits")
     try:
-        await record.adapter.finish_pairing(body.code)
+        await record.adapter.finish_pairing(code)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, str(exc)) from None
     await hub.refresh(record)

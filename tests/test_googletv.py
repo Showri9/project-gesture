@@ -89,7 +89,7 @@ def test_add_a_google_tv(client):
 
 def test_unknown_device_kind_is_rejected(client):
     resp = client.post("/api/devices/by-host",
-                       json={"host": "10.0.0.5", "kind": "firetv"})
+                       json={"host": "10.0.0.5", "kind": "chromecast"})
     assert resp.status_code == 422        # rejected by the schema pattern
 
 
@@ -114,6 +114,18 @@ def test_a_wrong_code_is_a_400_with_the_reason(client):
                        json={"code": "000000"})
     assert resp.status_code == 400
     assert "new one" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("body", [{}, {"code": ""}, {"code": "12345"},
+                                  {"code": "1234567"}, {"code": "12ab56"}])
+def test_google_tv_code_must_be_six_digits(client, body):
+    device = add_tv(client)
+    client.post(f"/api/devices/{device['id']}/pair/start")
+
+    resp = client.post(f"/api/devices/{device['id']}/pair/finish", json=body)
+
+    assert resp.status_code == 422
+    assert adapter_for(client, device["id"]).pairing_started is True
 
 
 def test_finishing_without_starting_fails_cleanly(client):
@@ -172,7 +184,7 @@ def test_both_tvs_coexist_and_intents_go_to_the_selected_one(client):
 
 # -- discovery ---------------------------------------------------------------
 
-def test_scan_looks_for_both_protocols(client, monkeypatch):
+def test_scan_looks_for_all_protocols(client, monkeypatch):
     """The regression this was written for: the scan route had its own
     Roku-only copy of discovery, so a Google TV could never be found by
     pressing Scan - only by typing its IP."""
@@ -180,10 +192,11 @@ def test_scan_looks_for_both_protocols(client, monkeypatch):
 
     monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
     monkeypatch.setattr(hub_module, "discover_googletv", lambda: ["10.0.0.6"])
+    monkeypatch.setattr(hub_module, "discover_firetv", lambda: ["10.0.0.7"])
 
     found = client.post("/api/discover").json()
     kinds = {d["kind"] for d in found}
-    assert kinds == {"roku", "googletv"}, found
+    assert kinds == {"roku", "googletv", "firetv"}, found
 
 
 def test_scan_survives_zeroconf_being_absent(client, monkeypatch):
@@ -192,7 +205,8 @@ def test_scan_survives_zeroconf_being_absent(client, monkeypatch):
     import gesturectl.api.hub as hub_module
 
     monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
-    monkeypatch.setattr(hub_module, "discover_googletv", lambda: [])
+    monkeypatch.setattr(hub_module, "discover_googletv", list)
+    monkeypatch.setattr(hub_module, "discover_firetv", list)
 
     found = client.post("/api/discover").json()
     assert [d["kind"] for d in found] == ["roku"]

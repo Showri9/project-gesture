@@ -19,9 +19,11 @@ class DeviceOut(BaseModel):
     kind: str = "roku"
     model: str = "unknown"
     is_tv: bool = False
-    #: Google TV answers but refuses commands until paired. A normal state with
-    #: a normal remedy, so it is a field rather than an error.
+    #: Google TV and Fire TV both answer but refuse commands until somebody
+    #: walks over. A normal state with a remedy, so a field rather than an error.
     needs_pairing: bool = False
+    #: "code" | "confirm" — which words the interface should use
+    pairing_kind: str = "code"
     host: str
     reachable: bool = False
     power: str = "unknown"          # on | standby | unknown
@@ -32,11 +34,13 @@ class DeviceOut(BaseModel):
 class AddByHost(BaseModel):
     host: str = Field(min_length=3, description="IP or http://ip:8060")
     name: str | None = None
-    kind: str = Field(default="roku", pattern="^(roku|googletv)$")
+    kind: str = Field(default="roku", pattern="^(roku|googletv|firetv)$")
 
 
 class PairingCode(BaseModel):
-    code: str = Field(min_length=4, max_length=12)
+    #: Google TV sends six digits. Fire TV has nothing to send - accepting the
+    #: on-screen prompt is the whole step - so the field is optional.
+    code: str = Field(default="", max_length=12)
 
 
 class IntentIn(BaseModel):
