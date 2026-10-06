@@ -251,7 +251,12 @@ class Hub:
     async def _forget(self, record: DeviceRecord) -> None:
         self.devices.pop(record.id, None)
         if self.selected_id == record.id:
-            self.selected_id = next(iter(self.devices), None)
+            replacement = next(iter(self.devices), None)
+            if replacement is None:
+                self.selected_id = None
+                self._machine.target = "default"
+            else:
+                self.select(replacement)
         if record.adapter is not None:
             await record.adapter.close()
 
