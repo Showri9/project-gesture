@@ -15,14 +15,28 @@
 </header>
 
 <nav>
-  <button data-screen="sensor" class="on">Sensor</button>
+  <button data-screen="remote" class="on">Remote</button>
+  <button data-screen="gesture">Gesture</button>
   <button data-screen="devices">Devices</button>
   <button data-screen="settings">Settings</button>
 </nav>
 
 <main>
 
-  <section id="sensor">
+  <section id="remote">
+    <p class="sub">Controlling: <strong id="remote-target">no TV selected</strong>. Pick one under Devices.</p>
+    <div class="remote">
+      <button data-intent="POWER_ON">On</button>
+      <button data-intent="POWER_OFF">Off</button>
+      <button data-intent="MUTE_TOGGLE">Mute</button>
+      <button data-intent="VOLUME_UP">Vol +</button>
+      <button data-intent="VOLUME_DOWN">Vol −</button>
+      <button data-intent="PLAY_PAUSE">Play / Pause</button>
+    </div>
+    <p id="remote-hint" class="hint"></p>
+  </section>
+
+  <section id="gesture" hidden>
     <div class="stage">
       <video id="video" playsinline muted></video>
       <canvas id="overlay"></canvas>
@@ -40,17 +54,6 @@
     </div>
 
     <p id="hint" class="hint"></p>
-
-    <h2>Remote</h2>
-    <p class="sub">Works with no camera — a button and a hand take the same path.</p>
-    <div class="remote">
-      <button data-intent="VOLUME_UP">Vol +</button>
-      <button data-intent="VOLUME_DOWN">Vol −</button>
-      <button data-intent="MUTE_TOGGLE">Mute</button>
-      <button data-intent="PLAY_PAUSE">Play / Pause</button>
-      <button data-intent="POWER_ON">On</button>
-      <button data-intent="POWER_OFF">Off</button>
-    </div>
 
     <h2>Recent</h2>
     <ul id="log" class="log"><li class="empty">Nothing yet.</li></ul>

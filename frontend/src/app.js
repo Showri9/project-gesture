@@ -20,9 +20,10 @@ const state = {
 document.querySelectorAll("nav button").forEach((button) => {
   button.onclick = () => {
     document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b === button));
-    for (const name of ["sensor", "devices", "settings"]) {
+    for (const name of ["remote", "gesture", "devices", "settings"]) {
       $(name).hidden = name !== button.dataset.screen;
     }
+    if (button.dataset.screen === "remote") loadRemoteTarget();
     if (button.dataset.screen === "devices") loadDevices();
     if (button.dataset.screen === "settings") loadConfig();
   };
@@ -56,6 +57,7 @@ function onEvent(event) {
     case "device_status":
     case "device_selected":
       if (!$("devices").hidden) loadDevices();
+      if (!$("remote").hidden) loadRemoteTarget();
       break;
     case "discovery":
       $("scanning").hidden = !event.scanning;
@@ -150,10 +152,17 @@ document.querySelectorAll(".remote button").forEach((button) => {
   button.onclick = async () => {
     button.disabled = true;
     try { await api.sendIntent(button.dataset.intent); }
-    catch (error) { $("hint").textContent = String(error.message ?? error); }
+    catch (error) { $("remote-hint").textContent = String(error.message ?? error); }
     finally { button.disabled = false; }
   };
 });
+
+async function loadRemoteTarget() {
+  $("remote-hint").textContent = "";
+  try { $("remote-target").textContent = (await api.health()).device ?? "no TV selected"; }
+  catch { $("remote-target").textContent = "server unreachable"; }
+}
+loadRemoteTarget();
 
 // -- devices -----------------------------------------------------------------
 
