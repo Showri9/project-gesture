@@ -171,12 +171,18 @@ def discover_firetv(timeout: float = 5.0) -> list[str]:
     discoverable and being controllable are separate things here, and the
     adapter reports the difference rather than discovery hiding it.
     """
-    found = _mdns_sweep(_FIRETV_SERVICE, timeout)
-    if found:
-        return found
-    # A Fire TV stops advertising when it sleeps, and some routers drop
-    # multicast altogether, so an empty mDNS answer does not mean there is no
-    # Fire TV. Ask the network directly for anything listening for ADB.
+    return _mdns_sweep(_FIRETV_SERVICE, timeout)
+
+
+def discover_adb_candidates() -> list[str]:
+    """Hosts with the ADB port open - candidates, NOT confirmed Fire TVs.
+
+    The fallback for when mDNS finds nothing: a Fire TV stops advertising when
+    it sleeps, and some routers drop multicast altogether. An open port 5555 is
+    shared by every Android device with debugging on, including Google TVs, so
+    the caller must discard hosts another protocol already claimed and must
+    confirm the manufacturer once the device is authorised.
+    """
     return _adb_sweep()
 
 

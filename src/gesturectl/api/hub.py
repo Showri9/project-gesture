@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from ..config import AppConfig, DeviceConfig
 from ..devices.base import DeviceAdapter
 from ..devices.discover import (
+    discover_adb_candidates,
     discover_firetv,
     discover_googletv,
     discover_roku,
@@ -39,6 +40,11 @@ def device_id(host: str) -> str:
         host.replace("http://", "").replace("https://", "")
         .replace(":", "-").replace(".", "-").rstrip("/")
     )
+
+
+def _bare(host: str) -> str:
+    """'http://10.0.0.5:8060' and '10.0.0.5' are the same machine."""
+    return host.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
 
 
 @dataclass(slots=True)
@@ -208,21 +214,46 @@ class Hub:
         are blocking, hence the threads.
         """
         self.events.publish("discovery", scanning=True, found=[])
-        roku_hosts, google_hosts, fire_hosts = await asyncio.gather(
+        roku_hosts, google_hosts, fire_hosts, adb_hosts = await asyncio.gather(
             asyncio.to_thread(discover_roku),
             asyncio.to_thread(discover_googletv),
             asyncio.to_thread(discover_firetv),
+            asyncio.to_thread(discover_adb_candidates),
         )
+        claimed = {_bare(h) for h in roku_hosts} | {_bare(h) for h in google_hosts}
+        fire_hosts = [h for h in dict.fromkeys(fire_hosts) if _bare(h) not in claimed]
+
+        # mDNS is the only trustworthy Fire TV signal, but a sleeping Fire TV
+        # does not answer it, so hosts with ADB open are added as candidates.
+        # Anything another protocol already owns is skipped, and the rest are
+        # checked against the manufacturer once refreshed.
+        confirmed = {_bare(h) for h in fire_hosts}
+        candidates = [h for h in adb_hosts
+                      if _bare(h) not in claimed and _bare(h) not in confirmed]
+
         found = [self.add_device(host, kind="roku") for host in roku_hosts]
         found += [self.add_device(host, kind="googletv") for host in google_hosts]
         found += [self.add_device(host, kind="firetv") for host in fire_hosts]
-        for record in found:
+        guessed = [self.add_device(host, kind="firetv") for host in candidates]
+        for record in found + guessed:
             await self.refresh(record)
+        for record in guessed:
+            if getattr(record.adapter, "verified", None) is False:
+                await self._forget(record)       # an Android device, not a Fire TV
+        guessed = [r for r in guessed if r.id in self.devices]
+        found = list({r.id: r for r in [*found, *guessed]}.values())   # one per device
         self.events.publish(
             "discovery", scanning=False, found=[r.id for r in found],
             mdns_available=mdns_discovery_available(),
         )
         return found
+
+    async def _forget(self, record: DeviceRecord) -> None:
+        self.devices.pop(record.id, None)
+        if self.selected_id == record.id:
+            self.selected_id = next(iter(self.devices), None)
+        if record.adapter is not None:
+            await record.adapter.close()
 
     # -- dispatch -----------------------------------------------------------
 

@@ -18,17 +18,18 @@ def test_adb_sweep_finds_only_hosts_with_the_port_open(monkeypatch):
         listener.close()
 
 
-def test_firetv_falls_back_to_adb_when_mdns_finds_nothing(monkeypatch):
+def test_firetv_discovery_is_mdns_only(monkeypatch):
+    """An open ADB port is not proof of a Fire TV, so discover_firetv must not
+    quietly widen into the port sweep."""
     monkeypatch.setattr(discover, "_mdns_sweep", lambda service, timeout: [])
-    monkeypatch.setattr(discover, "_adb_sweep", lambda: ["10.0.0.9"])
-    assert discover.discover_firetv() == ["10.0.0.9"]
-
-
-def test_firetv_skips_the_fallback_when_mdns_answers(monkeypatch):
-    monkeypatch.setattr(discover, "_mdns_sweep", lambda service, timeout: ["10.0.0.8"])
 
     def boom():
-        raise AssertionError("fallback should not run")
+        raise AssertionError("port sweep must not run from discover_firetv")
 
     monkeypatch.setattr(discover, "_adb_sweep", boom)
-    assert discover.discover_firetv() == ["10.0.0.8"]
+    assert discover.discover_firetv() == []
+
+
+def test_adb_candidates_come_from_the_port_sweep(monkeypatch):
+    monkeypatch.setattr(discover, "_adb_sweep", lambda: ["10.0.0.9"])
+    assert discover.discover_adb_candidates() == ["10.0.0.9"]

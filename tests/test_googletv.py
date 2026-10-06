@@ -193,6 +193,7 @@ def test_scan_looks_for_all_protocols(client, monkeypatch):
     monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
     monkeypatch.setattr(hub_module, "discover_googletv", lambda: ["10.0.0.6"])
     monkeypatch.setattr(hub_module, "discover_firetv", lambda: ["10.0.0.7"])
+    monkeypatch.setattr(hub_module, "discover_adb_candidates", list)
 
     found = client.post("/api/discover").json()
     kinds = {d["kind"] for d in found}
@@ -207,6 +208,7 @@ def test_scan_survives_zeroconf_being_absent(client, monkeypatch):
     monkeypatch.setattr(hub_module, "discover_roku", lambda: ["http://10.0.0.5:8060"])
     monkeypatch.setattr(hub_module, "discover_googletv", list)
     monkeypatch.setattr(hub_module, "discover_firetv", list)
+    monkeypatch.setattr(hub_module, "discover_adb_candidates", list)
 
     found = client.post("/api/discover").json()
     assert [d["kind"] for d in found] == ["roku"]
@@ -243,3 +245,34 @@ def test_the_roku_sweep_re_announces_rather_than_sending_once():
         "a targeted search finding nothing must fall back to a broad one"
     )
     assert "log.info" in source, "a failed socket must not look like an empty network"
+
+
+def test_adb_fallback_skips_hosts_another_protocol_owns(client, monkeypatch):
+    """A Google TV with ADB on answers port 5555 too. It must appear once, as a
+    Google TV - not a second time as a Fire TV."""
+    import gesturectl.api.hub as hub_module
+
+    monkeypatch.setattr(hub_module, "discover_roku", list)
+    monkeypatch.setattr(hub_module, "discover_googletv", lambda: ["10.0.0.6"])
+    monkeypatch.setattr(hub_module, "discover_firetv", list)
+    monkeypatch.setattr(hub_module, "discover_adb_candidates",
+                        lambda: ["10.0.0.6", "10.0.0.8"])
+
+    found = client.post("/api/discover").json()
+    assert sorted((d["host"], d["kind"]) for d in found) == [
+        ("10.0.0.6", "googletv"), ("10.0.0.8", "firetv")], found
+
+
+def test_adb_candidate_that_is_not_amazon_is_dropped(client, monkeypatch):
+    import gesturectl.api.hub as hub_module
+
+    monkeypatch.setattr(hub_module, "discover_roku", list)
+    monkeypatch.setattr(hub_module, "discover_googletv", list)
+    monkeypatch.setattr(hub_module, "discover_firetv", list)
+    monkeypatch.setattr(hub_module, "discover_adb_candidates", lambda: ["10.0.0.8"])
+    from tests.test_api import FakeRoku
+
+    monkeypatch.setattr(FakeRoku, "verified", False, raising=False)
+
+    assert client.post("/api/discover").json() == []
+    assert "10-0-0-8" not in {d["id"] for d in client.get("/api/devices").json()}
