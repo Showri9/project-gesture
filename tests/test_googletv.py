@@ -308,3 +308,18 @@ def test_device_added_by_ip_is_never_removed_as_a_guess(client, monkeypatch):
                         json={"host": "10.0.0.8", "kind": "firetv"})
     assert added.status_code == 200
     assert client.post(f"/api/devices/{added.json()['id']}/refresh").status_code == 200
+
+
+def test_adb_sweep_still_runs_when_mdns_finds_one_fire_tv(client, monkeypatch):
+    """A sleeping Fire TV does not answer mDNS, so finding one that way must not
+    stop the sweep for the others."""
+    import gesturectl.api.hub as hub_module
+
+    monkeypatch.setattr(hub_module, "discover_roku", list)
+    monkeypatch.setattr(hub_module, "discover_googletv", list)
+    monkeypatch.setattr(hub_module, "discover_firetv", lambda: ["10.0.0.7"])
+    monkeypatch.setattr(hub_module, "discover_adb_candidates",
+                        lambda: ["10.0.0.7", "10.0.0.8"])
+
+    hosts = {d["host"] for d in client.post("/api/discover").json()}
+    assert {"10.0.0.7", "10.0.0.8"} <= hosts

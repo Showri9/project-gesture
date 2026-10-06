@@ -231,15 +231,15 @@ class Hub:
         are blocking, hence the threads.
         """
         self.events.publish("discovery", scanning=True, found=[])
-        roku_hosts, google_hosts, fire_hosts = await asyncio.gather(
+        # The port sweep runs every time, not only when mDNS comes back empty:
+        # a sleeping Fire TV does not answer mDNS, so one TV being found that
+        # way says nothing about the others (found one of three on a real
+        # network). It runs alongside the rest, so it adds no wait.
+        roku_hosts, google_hosts, fire_hosts, adb_hosts = await asyncio.gather(
             asyncio.to_thread(discover_roku),
             asyncio.to_thread(discover_googletv),
             asyncio.to_thread(discover_firetv),
-        )
-        adb_hosts = (
-            await asyncio.to_thread(discover_adb_candidates)
-            if not fire_hosts
-            else []
+            asyncio.to_thread(discover_adb_candidates),
         )
         claimed = {_bare(h) for h in roku_hosts} | {_bare(h) for h in google_hosts}
         fire_hosts = [h for h in dict.fromkeys(fire_hosts) if _bare(h) not in claimed]
