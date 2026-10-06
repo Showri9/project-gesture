@@ -64,6 +64,10 @@ class DeviceRecord:
     #: "code" (Google TV shows six digits) or "confirm" (Fire TV shows a prompt
     #: to accept). Different words are needed, so the interface has to know.
     pairing_kind: str = "code"
+    #: Found by the ADB port sweep rather than by anything Amazon-specific, so
+    #: it is only a guess at a Fire TV until the manufacturer has been read.
+    #: Never set for a device the user added by hand.
+    guessed: bool = False
 
 
 def _default_adapter(name: str, host: str, kind: str = "roku") -> DeviceAdapter:
@@ -198,6 +202,19 @@ class Hub:
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI, not swallowed
             record.reachable = False
             log.info("device %s unreachable: %s", record.id, exc)
+
+        # Runs on every refresh, not just discovery: an unauthorised device will
+        # not run shell commands, so the manufacturer only becomes readable
+        # after pairing - which arrives here through the same call.
+        if record.guessed:
+            verified = getattr(record.adapter, "verified", None)
+            if verified is False:
+                log.info("%s is not a Fire TV - removing it", record.id)
+                await self._forget(record)
+                self.events.publish("device_removed", id=record.id)
+                return
+            if verified:
+                record.guessed = False
         self.events.publish(
             "device_status", id=record.id, reachable=record.reachable,
             model=record.model, is_tv=record.is_tv,
@@ -234,12 +251,14 @@ class Hub:
         found = [self.add_device(host, kind="roku") for host in roku_hosts]
         found += [self.add_device(host, kind="googletv") for host in google_hosts]
         found += [self.add_device(host, kind="firetv") for host in fire_hosts]
-        guessed = [self.add_device(host, kind="firetv") for host in candidates]
+        guessed = []
+        for host in candidates:
+            is_new = device_id(host) not in self.devices
+            record = self.add_device(host, kind="firetv")
+            record.guessed = record.guessed or is_new   # never demote a hand-added one
+            guessed.append(record)
         for record in found + guessed:
-            await self.refresh(record)
-        for record in guessed:
-            if getattr(record.adapter, "verified", None) is False:
-                await self._forget(record)       # an Android device, not a Fire TV
+            await self.refresh(record)       # drops a guess that is not Amazon
         guessed = [r for r in guessed if r.id in self.devices]
         found = list({r.id: r for r in [*found, *guessed]}.values())   # one per device
         self.events.publish(

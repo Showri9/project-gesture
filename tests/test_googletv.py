@@ -276,3 +276,35 @@ def test_adb_candidate_that_is_not_amazon_is_dropped(client, monkeypatch):
 
     assert client.post("/api/discover").json() == []
     assert "10-0-0-8" not in {d["id"] for d in client.get("/api/devices").json()}
+
+
+def test_candidate_found_to_be_non_amazon_after_pairing_is_removed(client, monkeypatch):
+    """Before authorisation the manufacturer cannot be read, so the candidate
+    survives discovery. The check has to run again when pairing completes."""
+    import gesturectl.api.hub as hub_module
+    from tests.test_api import FakeRoku
+
+    monkeypatch.setattr(hub_module, "discover_roku", list)
+    monkeypatch.setattr(hub_module, "discover_googletv", list)
+    monkeypatch.setattr(hub_module, "discover_firetv", list)
+    monkeypatch.setattr(hub_module, "discover_adb_candidates", lambda: ["10.0.0.8"])
+    monkeypatch.setattr(FakeRoku, "verified", None, raising=False)
+
+    found = client.post("/api/discover").json()
+    candidate = next(d for d in found if d["host"] == "10.0.0.8")
+
+    monkeypatch.setattr(FakeRoku, "verified", False, raising=False)   # now authorised
+    reply = client.post(f"/api/devices/{candidate['id']}/refresh")
+
+    assert reply.status_code == 409
+    assert candidate["id"] not in {d["id"] for d in client.get("/api/devices").json()}
+
+
+def test_device_added_by_ip_is_never_removed_as_a_guess(client, monkeypatch):
+    from tests.test_api import FakeRoku
+
+    monkeypatch.setattr(FakeRoku, "verified", False, raising=False)
+    added = client.post("/api/devices/by-host",
+                        json={"host": "10.0.0.8", "kind": "firetv"})
+    assert added.status_code == 200
+    assert client.post(f"/api/devices/{added.json()['id']}/refresh").status_code == 200
