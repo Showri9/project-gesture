@@ -151,8 +151,15 @@ function describeCameraError(error) {
 document.querySelectorAll(".remote button").forEach((button) => {
   button.onclick = async () => {
     button.disabled = true;
-    try { await api.sendIntent(button.dataset.intent); }
-    catch (error) { $("remote-hint").textContent = String(error.message ?? error); }
+    try {
+      // The endpoint answers 200 with ok:false for a command the TV refused
+      // (nothing selected, unsupported key, adapter failure), so the result
+      // has to be read, not just awaited.
+      const result = await api.sendIntent(button.dataset.intent);
+      $("remote-hint").textContent = result.ok
+        ? ""
+        : "The TV did not take that. Check one is selected under Devices, reachable and paired.";
+    } catch (error) { $("remote-hint").textContent = String(error.message ?? error); }
     finally { button.disabled = false; }
   };
 });
