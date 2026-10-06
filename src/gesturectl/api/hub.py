@@ -214,11 +214,15 @@ class Hub:
         are blocking, hence the threads.
         """
         self.events.publish("discovery", scanning=True, found=[])
-        roku_hosts, google_hosts, fire_hosts, adb_hosts = await asyncio.gather(
+        roku_hosts, google_hosts, fire_hosts = await asyncio.gather(
             asyncio.to_thread(discover_roku),
             asyncio.to_thread(discover_googletv),
             asyncio.to_thread(discover_firetv),
-            asyncio.to_thread(discover_adb_candidates),
+        )
+        adb_hosts = (
+            await asyncio.to_thread(discover_adb_candidates)
+            if not fire_hosts
+            else []
         )
         claimed = {_bare(h) for h in roku_hosts} | {_bare(h) for h in google_hosts}
         fire_hosts = [h for h in dict.fromkeys(fire_hosts) if _bare(h) not in claimed]
