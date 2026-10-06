@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from ..config import AppConfig, DeviceConfig
 from ..devices.base import DeviceAdapter
 from ..devices.discover import (
+    discover_adb_candidates,
     discover_firetv,
     discover_googletv,
     discover_roku,
@@ -41,6 +42,11 @@ def device_id(host: str) -> str:
     )
 
 
+def _bare(host: str) -> str:
+    """'http://10.0.0.5:8060' and '10.0.0.5' are the same machine."""
+    return host.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+
+
 @dataclass(slots=True)
 class DeviceRecord:
     id: str
@@ -58,6 +64,10 @@ class DeviceRecord:
     #: "code" (Google TV shows six digits) or "confirm" (Fire TV shows a prompt
     #: to accept). Different words are needed, so the interface has to know.
     pairing_kind: str = "code"
+    #: Found by the ADB port sweep rather than by anything Amazon-specific, so
+    #: it is only a guess at a Fire TV until the manufacturer has been read.
+    #: Never set for a device the user added by hand.
+    guessed: bool = False
 
 
 def _default_adapter(name: str, host: str, kind: str = "roku") -> DeviceAdapter:
@@ -192,6 +202,19 @@ class Hub:
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI, not swallowed
             record.reachable = False
             log.info("device %s unreachable: %s", record.id, exc)
+
+        # Runs on every refresh, not just discovery: an unauthorised device will
+        # not run shell commands, so the manufacturer only becomes readable
+        # after pairing - which arrives here through the same call.
+        if record.guessed:
+            verified = getattr(record.adapter, "verified", None)
+            if verified is False:
+                log.info("%s is not a Fire TV - removing it", record.id)
+                await self._forget(record)
+                self.events.publish("device_removed", id=record.id)
+                return
+            if verified:
+                record.guessed = False
         self.events.publish(
             "device_status", id=record.id, reachable=record.reachable,
             model=record.model, is_tv=record.is_tv,
@@ -208,21 +231,57 @@ class Hub:
         are blocking, hence the threads.
         """
         self.events.publish("discovery", scanning=True, found=[])
-        roku_hosts, google_hosts, fire_hosts = await asyncio.gather(
+        # The port sweep runs every time, not only when mDNS comes back empty:
+        # a sleeping Fire TV does not answer mDNS, so one TV being found that
+        # way says nothing about the others (found one of three on a real
+        # network). It runs alongside the rest, so it adds no wait.
+        roku_hosts, google_hosts, fire_hosts, adb_hosts = await asyncio.gather(
             asyncio.to_thread(discover_roku),
             asyncio.to_thread(discover_googletv),
             asyncio.to_thread(discover_firetv),
+            asyncio.to_thread(discover_adb_candidates),
         )
+        claimed = {_bare(h) for h in roku_hosts} | {_bare(h) for h in google_hosts}
+        fire_hosts = [h for h in dict.fromkeys(fire_hosts) if _bare(h) not in claimed]
+
+        # mDNS is the only trustworthy Fire TV signal, but a sleeping Fire TV
+        # does not answer it, so hosts with ADB open are added as candidates.
+        # Anything another protocol already owns is skipped, and the rest are
+        # checked against the manufacturer once refreshed.
+        confirmed = {_bare(h) for h in fire_hosts}
+        candidates = [h for h in adb_hosts
+                      if _bare(h) not in claimed and _bare(h) not in confirmed]
+
         found = [self.add_device(host, kind="roku") for host in roku_hosts]
         found += [self.add_device(host, kind="googletv") for host in google_hosts]
         found += [self.add_device(host, kind="firetv") for host in fire_hosts]
-        for record in found:
-            await self.refresh(record)
+        guessed = []
+        for host in candidates:
+            is_new = device_id(host) not in self.devices
+            record = self.add_device(host, kind="firetv")
+            record.guessed = record.guessed or is_new   # never demote a hand-added one
+            guessed.append(record)
+        for record in found + guessed:
+            await self.refresh(record)       # drops a guess that is not Amazon
+        guessed = [r for r in guessed if r.id in self.devices]
+        found = list({r.id: r for r in [*found, *guessed]}.values())   # one per device
         self.events.publish(
             "discovery", scanning=False, found=[r.id for r in found],
             mdns_available=mdns_discovery_available(),
         )
         return found
+
+    async def _forget(self, record: DeviceRecord) -> None:
+        self.devices.pop(record.id, None)
+        if self.selected_id == record.id:
+            replacement = next(iter(self.devices), None)
+            if replacement is None:
+                self.selected_id = None
+                self._machine.target = "default"
+            else:
+                self.select(replacement)
+        if record.adapter is not None:
+            await record.adapter.close()
 
     # -- dispatch -----------------------------------------------------------
 

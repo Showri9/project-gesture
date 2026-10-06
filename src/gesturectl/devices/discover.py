@@ -6,6 +6,7 @@ import logging
 import re
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 log = logging.getLogger("gesturectl.discover")
 
@@ -171,6 +172,63 @@ def discover_firetv(timeout: float = 5.0) -> list[str]:
     adapter reports the difference rather than discovery hiding it.
     """
     return _mdns_sweep(_FIRETV_SERVICE, timeout)
+
+
+def discover_adb_candidates() -> list[str]:
+    """Hosts with the ADB port open - candidates, NOT confirmed Fire TVs.
+
+    The fallback for when mDNS finds nothing: a Fire TV stops advertising when
+    it sleeps, and some routers drop multicast altogether. An open port 5555 is
+    shared by every Android device with debugging on, including Google TVs, so
+    the caller must discard hosts another protocol already claimed and must
+    confirm the manufacturer once the device is authorised.
+    """
+    return _adb_sweep()
+
+
+_ADB_PORT = 5555
+
+
+def _local_prefix() -> str | None:
+    """'192.168.68.' for the network this machine is on, or None.
+
+    Connecting a UDP socket sends nothing; it only asks the OS which interface
+    would be used, which is the cheap way to learn our own address.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("10.255.255.255", 1))
+        ip = sock.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        sock.close()
+    return ip.rsplit(".", 1)[0] + "." if ip.count(".") == 3 else None
+
+
+def _adb_sweep(hosts: list[str] | None = None, timeout: float = 0.6) -> list[str]:
+    """Hosts with the ADB port open. Scans the local /24 unless given a list.
+
+    This cannot tell a Fire TV from any other Android device with debugging on,
+    so it is only the fallback: the adapter reports the real model once it
+    connects, and the interface shows it.
+    """
+    if hosts is None:
+        prefix = _local_prefix()
+        if prefix is None:
+            return []
+        hosts = [f"{prefix}{i}" for i in range(1, 255)]
+
+    def open_port(host: str) -> bool:
+        try:
+            with socket.create_connection((host, _ADB_PORT), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    with ThreadPoolExecutor(max_workers=64) as pool:
+        results = list(pool.map(open_port, hosts))
+    return [host for host, ok in zip(hosts, results) if ok]
 
 
 #: kept for callers that only care about the Google TV case

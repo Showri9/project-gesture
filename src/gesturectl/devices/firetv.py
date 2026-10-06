@@ -62,6 +62,9 @@ class FireTVAdapter(DeviceAdapter):
         self.model = "Fire TV"
         self.is_tv = True
         self.needs_pairing = False
+        #: True / False once the manufacturer has been read; None while it
+        #: cannot be (an unauthorised device will not run shell commands).
+        self.verified: bool | None = None
 
         key_dir = Path(key_dir)
         key_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +129,10 @@ class FireTVAdapter(DeviceAdapter):
             name = (await self._device.shell("getprop ro.product.model")).strip()
             if name:
                 self.model = name
-        except Exception:  # noqa: BLE001 - a cosmetic field, never worth failing on
+            maker = (await self._device.shell("getprop ro.product.manufacturer")).strip()
+            if maker:
+                self.verified = maker.lower() == "amazon"
+        except Exception:  # noqa: BLE001 - cosmetic, never worth failing on
             pass
 
     # -- authorisation ------------------------------------------------------

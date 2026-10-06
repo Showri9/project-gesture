@@ -31,6 +31,14 @@ def get_hub(request: Request) -> Hub:
     return request.app.state.hub
 
 
+def _still_listed(hub: Hub, record) -> None:
+    """A refresh can remove a guessed Fire TV that turned out not to be one."""
+    if record.id not in hub.devices:
+        raise HTTPException(
+            409, f"{record.host} is not a Fire TV, so it was removed from the list"
+        )
+
+
 def _device_out(hub: Hub, record) -> DeviceOut:
     adapter = record.adapter
     return DeviceOut(
@@ -83,6 +91,7 @@ async def add_by_host(body: AddByHost, request: Request) -> DeviceOut:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
     await hub.refresh(record)
+    _still_listed(hub, record)
     return _device_out(hub, record)
 
 
@@ -95,6 +104,7 @@ async def select_device(device_id: str, request: Request) -> DeviceOut:
         raise HTTPException(404, f"no device {device_id!r}") from None
     record = hub.devices[device_id]
     await hub.refresh(record)
+    _still_listed(hub, record)
     return _device_out(hub, record)
 
 
@@ -105,6 +115,7 @@ async def refresh_device(device_id: str, request: Request) -> DeviceOut:
     if record is None:
         raise HTTPException(404, f"no device {device_id!r}")
     await hub.refresh(record)
+    _still_listed(hub, record)
     return _device_out(hub, record)
 
 
